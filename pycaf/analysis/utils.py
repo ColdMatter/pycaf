@@ -1,0 +1,406 @@
+from typing import Any, Dict, List, Tuple
+from zipfile import ZipFile
+from PIL import Image
+from pathlib import Path
+import re
+import json
+import numpy as np
+
+
+from .models import (
+    Pattern
+)
+from .curve_fitting import (
+    linear,
+    fit_linear,
+    gaussian_with_offset,
+    fit_gaussian_with_offset,
+    gaussian_without_offset,
+    fit_gaussian_without_offset,
+    exponential_without_offset,
+    fit_exponential_without_offset,
+    exponential_with_offset,
+    fit_exponential_with_offset
+)
+
+
+def atoi(text):
+    return int(text) if text.isdigit() else text
+
+
+def natural_keys(text):
+    return [atoi(c) for c in re.split(r'(\d+)', text)]
+
+
+def get_zip_archive(
+    root: str,
+    year: int,
+    month: int,
+    day: int,
+    file_no: int,
+    prefix: str
+) -> ZipFile:
+    month_dict: Dict[int, str] = \
+        {
+            1: "01Jan",
+            2: "02Feb",
+            3: "03Mar",
+            4: "04Apr",
+            5: "05May",
+            6: "06Jun",
+            7: "07Jul",
+            8: "08Aug",
+            9: "09Sep",
+            10: "10Oct",
+            11: "11Nov",
+            12: "12Dec"
+        }
+    day_filled: str = str(day).zfill(2)
+    year_filled: str = str(year)[-2:]
+    file_filled: str = str(file_no).zfill(3)
+    month_filled: str = month_dict[month][-3:]
+    rootpath = Path(root)
+    filepath = rootpath.joinpath(
+        str(year),
+        month_dict[month],
+        day_filled,
+        f"{prefix}{day_filled}{month_filled}{year_filled}00_{file_filled}.zip"
+    )
+    return ZipFile(filepath)
+
+
+def create_file_list(
+    file_no_start: int,
+    file_no_stop: int = None,
+    background_file_start: int = None,
+    background_file_stop: int = None,
+    exclude_files: List[int] = []
+) -> Tuple[List[int], List[int]]:
+    files, background_files = [], []
+    if file_no_start and not file_no_stop:
+        files.append(file_no_start)
+        background_files.append(background_file_start)
+    if file_no_start and file_no_stop:
+        for i in range(file_no_start, file_no_stop+1):
+            if i not in exclude_files:
+                files.append(i)
+        if background_file_start and not background_file_stop:
+            for i in range(file_no_start, file_no_stop+1):
+                if i not in exclude_files:
+                    background_files.append(background_file_start)
+        elif background_file_start and background_file_stop:
+            for i in range(background_file_start, background_file_stop+1):
+                if i not in exclude_files:
+                    background_files.append(i)
+    return files, background_files
+
+
+def extract_pattern_from_json_string(
+    line: str
+) -> Tuple[Dict[str, int], np.ndarray]:
+    data = json.loads(line)
+    patterns = []
+    for value in data.values():
+        channels = value["channels"]
+        split_patterns = value["pattern"].split("\n")
+        for split_pattern in split_patterns:
+            if len(split_pattern):
+                _pattern_tt = split_pattern.split("\t\t")
+                if len(_pattern_tt) == 2:
+                    pattern = [
+                        _pattern_tt[0],
+                        *_pattern_tt[1].split("\t")
+                    ]
+                    patterns.append(pattern[:-1])
+                else:
+                    pattern = _pattern_tt[0].split("\t")
+                    patterns.append(pattern[:-1])
+    patterns = np.array(patterns[1:], dtype=str)
+    return channels, patterns
+
+
+def read_digital_patterns_from_zip(
+    archive: ZipFile
+) -> Dict[str, Pattern]:
+    parameters = read_parameters_from_zip(archive)
+    full_time = parameters["PatternLength"]
+    channels: Dict[str, Pattern] = {}
+    for filename in archive.namelist():
+        if filename[-19:] == "digitalPattern.json":
+            with archive.open(filename) as f:
+                lines = f.readlines()
+                for line in lines:
+                    _channels, patterns = \
+                        extract_pattern_from_json_string(line)
+                    timings = np.array(patterns[:, 0], dtype=int)
+                    for name, index in _channels.items():
+                        filled_timings = np.empty(0, dtype=int)
+                        filled_patterns = np.empty(0, dtype=int)
+                        next_seq = 0
+                        for i, timing in enumerate(timings):
+                            seq = patterns[i, index+1]
+                            if seq == "U":
+                                filled_timings = \
+                                    np.append(filled_timings, timing-1)
+                                filled_patterns = np.append(filled_patterns, 0)
+                                filled_timings = \
+                                    np.append(filled_timings, timing)
+                                filled_patterns = np.append(filled_patterns, 5)
+                                next_seq = 5
+                            elif seq == "D":
+                                filled_timings = \
+                                    np.append(filled_timings, timing-1)
+                                filled_patterns = np.append(filled_patterns, 5)
+                                filled_timings = \
+                                    np.append(filled_timings, timing)
+                                filled_patterns = np.append(filled_patterns, 0)
+                                next_seq = 0
+                            elif seq == "-":
+                                filled_timings = \
+                                    np.append(filled_timings, timing)
+                                filled_patterns = \
+                                    np.append(filled_patterns, next_seq)
+                        filled_timings = np.append(filled_timings, full_time)
+                        filled_patterns = np.append(filled_patterns, next_seq)
+                        channels[name] = Pattern(
+                            name=name,
+                            time=filled_timings,
+                            event=filled_patterns
+                        )
+    return channels
+
+
+def read_analog_patterns_from_zip(
+    archive: ZipFile
+) -> Dict[str, Pattern]:
+    parameters = read_parameters_from_zip(archive)
+    full_time = parameters["PatternLength"]
+    offset = int(parameters["TCLBlockStart"])
+    reader = {}
+    for filename in archive.namelist():
+        if filename[-18:] == "analogPattern.json":
+            with archive.open(filename) as f:
+                reader.update(json.load(f))
+    channels: Dict[str, Pattern] = {}
+    for name, channel_data in reader.items():
+        timings = np.empty(0, dtype=int)
+        voltages = np.empty(0, dtype=float)
+        for timing, voltage in channel_data.items():
+            timings = np.append(timings, int(timing)+offset)
+            voltages = np.append(voltages, float(voltage))
+        filled_timings = np.empty(0, dtype=int)
+        filled_voltages = np.empty(0, dtype=float)
+        if len(timings) == 1:
+            filled_timings = np.append(filled_timings, timings[0])
+            filled_voltages = np.append(filled_voltages, voltages[0])
+            filled_timings = np.append(filled_timings, full_time)
+            filled_voltages = np.append(filled_voltages, voltages[0])
+        elif len(timings) > 1:
+            for i in range(len(timings)-1):
+                dt = timings[i+1]-timings[i]
+                if dt > 1:
+                    filled_timings = np.append(filled_timings, timings[i])
+                    filled_voltages = np.append(filled_voltages, voltages[i])
+                    filled_timings = np.append(filled_timings, timings[i+1]-1)
+                    filled_voltages = np.append(filled_voltages, voltages[i])
+                    filled_timings = np.append(filled_timings, timings[i+1])
+                    filled_voltages = np.append(filled_voltages, voltages[i+1])
+                else:
+                    filled_timings = np.append(filled_timings, timings[i])
+                    filled_voltages = np.append(filled_voltages, voltages[i])
+            filled_timings = np.append(filled_timings, full_time)
+            filled_voltages = np.append(filled_voltages, voltages[-1])
+        channels[name] = Pattern(
+            name=name,
+            time=filled_timings,
+            event=filled_voltages
+        )
+    return channels
+
+
+def read_images_from_zip(
+    archive: ZipFile
+) -> List[np.ndarray]:
+    images = []
+    filenames = archive.namelist()
+    filenames.sort(key=natural_keys)
+    for filename in filenames:
+        if filename[-3:] == "tif":
+            with archive.open(filename) as image_file:
+                images.append(
+                    np.array(
+                        Image.open(image_file),
+                        dtype=float
+                    )
+                )
+    return images
+
+
+def read_parameters_from_zip(
+    archive: ZipFile
+) -> Dict[str, Any]:
+    parameters = {}
+    for filename in archive.namelist():
+        if filename[-14:] == "parameters.txt":
+            with archive.open(filename) as parameter_file:
+                script_parameters = parameter_file.readlines()
+                for line in script_parameters:
+                    name, value, _ = line.split(b"\t")
+                    parameters[name.decode("utf-8")] = np.float(value)
+        elif filename[-18:] == "hardwareReport.txt":
+            with archive.open(filename) as hardware_file:
+                hardware_parameters = hardware_file.readlines()
+                for line in hardware_parameters:
+                    name, value, _ = line.split(b"\t")
+                    if value.isdigit():
+                        parameters[name.decode("utf-8")] = np.float(value)
+    return parameters
+
+
+def read_time_of_flight_from_zip(
+    archive: ZipFile
+) -> Tuple[int, np.ndarray]:
+    tofs = []
+    sampling_rate: int = 0
+    sorted_filenames = archive.namelist()
+    sorted_filenames.sort(key=natural_keys)
+    for filename in sorted_filenames:
+        if filename[0:3] == "Tof":
+            with archive.open(filename) as tof_file:
+                lines: List[bytes] = tof_file.readlines()
+                tofs.append(lines[1:])
+                sampling_rate: int = int(
+                    lines[0].decode("utf-8").split(",")[0].split(":")[-1]
+                )
+    if len(tofs) > 1:
+        tofs = np.array(tofs, dtype=float).mean(axis=0)
+    return sampling_rate, tofs
+
+
+def read_time_of_flight_from_zip_no_mean(
+    archive: ZipFile
+) -> Tuple[int, np.ndarray]:
+    tofs = []
+    sampling_rate: int = 0
+    sorted_filenames = archive.namelist()
+    sorted_filenames.sort(key=natural_keys)
+    for filename in sorted_filenames:
+        if filename[0:3] == "Tof":
+            with archive.open(filename) as tof_file:
+                lines: List[bytes] = tof_file.readlines()
+                tofs.append(lines[1:])
+                sampling_rate: int = int(
+                    lines[0].decode("utf-8").split(",")[0].split(":")[-1]
+                )
+    if len(tofs) > 1:
+        tofs = np.array(tofs, dtype=float)
+    return sampling_rate, tofs
+
+
+def crop_image(
+    image: np.ndarray,
+    centre: Tuple[int, int],
+    height: int,
+    width: int
+) -> np.ndarray:
+    hstart = int(centre[0]-height/2)
+    hstop = int(centre[0]+height/2)
+    vstart = int(centre[1]-width/2)
+    vstop = int(centre[1]+width/2)
+    return image[hstart:hstop, vstart:vstop]
+
+
+def crop_images(
+    images: np.ndarray,
+    centre: Tuple[int, int],
+    height: int,
+    width: int
+) -> np.ndarray:
+    hstart = int(centre[0]-height/2)
+    hstop = int(centre[0]+height/2)
+    vstart = int(centre[1]-width/2)
+    vstop = int(centre[1]+width/2)
+    return images[:, hstart:hstop, vstart:vstop]
+
+
+def calculate_molecule_number_from_fluorescent_images(
+    images: np.ndarray,
+    full_well_capacity: float,
+    bits_per_channel: int,
+    exposure_time: float,
+    gamma: float,
+    collection_solid_angle: float,
+    eta_q: float
+) -> np.ndarray:
+    count = np.sum(images, axis=(1, 2))
+    photon = (count*full_well_capacity*eta_q)/(2**bits_per_channel-1)
+    number = photon/(exposure_time*gamma*collection_solid_angle)
+    return number
+
+
+def calculate_optical_density_from_absorption_images(
+    images: np.ndarray,
+    probe_images: np.ndarray,
+    background_images: np.ndarray
+) -> np.ndarray:
+    images -= background_images
+    probe_images -= background_images
+    images[images <= 0] = 1.0
+    od = -np.log(images/probe_images)
+    od[np.isnan(od)] = 0.0
+    od[od == -np.inf] = 0.0
+    od[od == np.inf] = 0.0
+    return od
+
+
+def calculate_atom_number_from_absorption_images(
+    optical_density: np.ndarray,
+    pixel_size: float,
+    bin_size: int,
+    magnification: float,
+    saturation: float
+) -> np.ndarray:
+    count = np.sum(optical_density, axis=(1, 2))
+    number = count*saturation*(pixel_size*bin_size/magnification)**2
+    return number
+
+
+def calculate_cloud_size_from_image_1d_gaussian(
+    image: np.ndarray,
+    pixel_size: float,
+    bin_size: int,
+    magnification: float,
+) -> Tuple[float, float]:
+    vertical_integrate = np.sum(image, axis=0)
+    horizontal_integrate = np.sum(image, axis=1)
+    scale = (pixel_size*bin_size/magnification)
+    vertival_fit = fit_gaussian_with_offset(
+        scale*np.arange(0, len(vertical_integrate)),
+        vertical_integrate
+    )
+    horizontal_fit = fit_gaussian_with_offset(
+        scale*np.arange(0, len(horizontal_integrate)),
+        horizontal_integrate
+    )
+    return vertival_fit["sigma"], horizontal_fit["sigma"]
+
+
+def calculate_cloud_size_from_image_2d_gaussian(
+    image: np.ndarray,
+    pixel_size: float,
+    bin_size: int,
+    magnification: float,
+) -> Tuple[float, float]:
+    # FIXME
+    vertical_integrate = np.sum(image, axis=0)
+    horizontal_integrate = np.sum(image, axis=1)
+    scale = (pixel_size*bin_size/magnification)
+    vertival_fit = fit_gaussian_with_offset(
+        scale*np.arange(0, len(vertical_integrate)),
+        vertical_integrate
+    )
+    horizontal_fit = fit_gaussian_with_offset(
+        scale*np.arange(0, len(horizontal_integrate)),
+        horizontal_integrate
+    )
+    return vertival_fit["sigma"], horizontal_fit["sigma"]

@@ -1,7 +1,6 @@
-from typing import Any, Dict, List, Tuple, Union
-import numpy as np
+from typing import Any, Callable, Dict, List, Tuple, Union
 import pathlib
-from tqdm import tqdm
+from rich.progress import track
 import time
 import json
 import sys
@@ -16,13 +15,12 @@ from System import Activator
 class Experiment():
     def __init__(
         self,
-        root: str,
         config_path: str,
         interval: Union[int, float]
     ) -> None:
-        self.root = pathlib.Path(root)
         with open(config_path, "r") as f:
             self.config = json.load(f)
+        self.root = pathlib.Path(self.config["script_root_path"])
         self.interval = interval
         self.motmaster = None
         self.hardware_controller = None
@@ -34,7 +32,7 @@ class Experiment():
         path: str
     ) -> None:
         _path = pathlib.Path(path)
-        sys.path.append(_path.parent[0])
+        sys.path.append(_path.parent)
         clr.AddReference(path)
         return None
 
@@ -60,9 +58,9 @@ class Experiment():
             elif key == "hardware_controller":
                 self._add_ref(path_info["exe_path"])
                 try:
-                    import MoleculeMOTHardwareControl
+                    import CaFBECHadwareController
                     self.hardware_controller = Activator.GetObject(
-                        MoleculeMOTHardwareControl.Controller,
+                        CaFBECHadwareController.Controller,
                         path_info["remote_path"]
                     )
                 except Exception as e:
@@ -77,12 +75,12 @@ class Experiment():
                     )
                 except Exception as e:
                     print(f"Error: {e} encountered")
-            elif key == "wave_plate_controller":
+            elif key == "wavemeter_lock":
                 self._add_ref(path_info["exe_path"])
                 try:
-                    import WavePlateControl
-                    self.waveplate_controller = Activator.GetObject(
-                        WavePlateControl.Controller,
+                    import WavemeterLock
+                    self.wavemeter_lock = Activator.GetObject(
+                        WavemeterLock.Controller,
                         path_info["remote_path"]
                     )
                 except Exception as e:
@@ -110,19 +108,24 @@ class Experiment():
         self,
         script: str,
         parameter: str,
-        values: List[Union[int, float]]
-    ) -> None:
+        values: List[Union[int, float]],
+        callback: Callable = None
+    ) -> List[Any]:
         _dictionary = Dictionary[String, Object]()
         path = str(self.root.joinpath(f"{script}.cs"))
+        results = []
         try:
             self.motmaster.SetScriptPath(path)
-            for i in tqdm(range(len(values))):
+            for i in track(range(len(values))):
                 _dictionary[parameter] = values[i]
                 self.motmaster.Go(_dictionary)
                 time.sleep(self.interval)
+                if callback is not None:
+                    result = callback(values[i])
+                    results.append(result)
         except Exception as e:
             print(f"Error: {e} encountered")
-        return None
+        return results
 
     def scan_motmaster_parameters(
         self,
@@ -134,7 +137,7 @@ class Experiment():
         path = str(self.root.joinpath(f"{script}.cs"))
         try:
             self.motmaster.SetScriptPath(path)
-            for i in tqdm(range(len(values))):
+            for i in track(range(len(values))):
                 for k, parameter in enumerate(parameters):
                     _dictionary[parameter] = values[i][k]
                 self.motmaster.Go(_dictionary)
@@ -143,23 +146,209 @@ class Experiment():
             print(f"Error: {e} encountered")
         return None
 
-    def scan_laser_set_points(
+    def scan_tcl_laser_set_points(
         self,
         script: str,
-        cavity: str,
         laser: str,
-        values: List[Union[int, float]]
-    ) -> None:
+        values: List[Union[int, float]],
+        callback: Callable = None,
+        motmaster_parameter: str = None,
+        motmaster_value: Union[int, float] = None
+    ) -> List[Any]:
         _dictionary = Dictionary[String, Object]()
         path = str(self.root.joinpath(f"{script}.cs"))
+        cavity = self.config["lasers"][laser]
+        current_set_point = self.transfer_cavity_lock.GetLaserSetpoint(
+            cavity, laser
+        )
+        results = []
         try:
             self.motmaster.SetScriptPath(path)
-            for i in tqdm(range(len(values))):
+            if (motmaster_parameter and motmaster_value) is not None:
+                _dictionary[motmaster_parameter] = motmaster_value
+            while current_set_point > values[0]:
+                current_set_point -= 0.001
+                self.transfer_cavity_lock.SetLaserSetpoint(
+                    cavity, laser, current_set_point
+                )
+                time.sleep(0.05)
+            while current_set_point < values[0]:
+                current_set_point += 0.001
+                self.transfer_cavity_lock.SetLaserSetpoint(
+                    cavity, laser, current_set_point
+                )
+                time.sleep(0.1)
+            for i in track(range(len(values))):
                 self.transfer_cavity_lock.SetLaserSetpoint(
                     cavity, laser, values[i]
                 )
                 self.motmaster.Go(_dictionary)
                 time.sleep(self.interval)
+                if callback is not None:
+                    result = callback(values[i])
+                    results.append(result)
+        except Exception as e:
+            print(f"Error: {e} encountered")
+        return results
+
+    def scan_wm_laser_set_points(
+        self,
+        script: str,
+        laser: str,
+        values: List[Union[int, float]],
+        callback: Callable = None,
+        motmaster_parameter: str = None,
+        motmaster_value: Union[int, float] = None
+    ) -> List[Any]:
+        _dictionary = Dictionary[String, Object]()
+        path = str(self.root.joinpath(f"{script}.cs"))
+        current_set_point = float(self.wavemeter_lock.getSlaveFrequency(
+            laser
+        ))
+        results = []
+        try:
+            self.motmaster.SetScriptPath(path)
+            if (motmaster_parameter and motmaster_value) is not None:
+                _dictionary[motmaster_parameter] = motmaster_value
+            while current_set_point > values[0]:
+                current_set_point -= 0.00001
+                self.wavemeter_lock.setSlaveFrequency(
+                    laser, current_set_point
+                )
+                time.sleep(0.05)
+            while current_set_point < values[0]:
+                current_set_point += 0.00001
+                self.wavemeter_lock.setSlaveFrequency(
+                    laser, current_set_point
+                )
+                time.sleep(0.1)
+            for i in track(range(len(values))):
+                self.wavemeter_lock.setSlaveFrequency(
+                    laser, values[i]
+                )
+                self.motmaster.Go(_dictionary)
+                time.sleep(self.interval)
+                if callback is not None:
+                    result = callback(values[i])
+                    results.append(result)
+        except Exception as e:
+            print(f"Error: {e} encountered")
+        return results
+
+    def scan_wm_laser_set_points_with_motmaster_values(
+        self,
+        script: str,
+        laser: str,
+        values: List[Union[int, float]],
+        callback: Callable = None,
+        motmaster_parameter: str = None,
+        motmaster_values: List[Union[int, float]] = None
+    ) -> List[Any]:
+        _dictionary = Dictionary[String, Object]()
+        path = str(self.root.joinpath(f"{script}.cs"))
+        current_set_point = float(self.wavemeter_lock.getSlaveFrequency(
+            laser
+        ))
+        results = []
+        try:
+            self.motmaster.SetScriptPath(path)
+            while current_set_point > values[0]:
+                current_set_point -= 0.00001
+                self.wavemeter_lock.setSlaveFrequency(
+                    laser, current_set_point
+                )
+                time.sleep(0.05)
+            while current_set_point < values[0]:
+                current_set_point += 0.00001
+                self.wavemeter_lock.setSlaveFrequency(
+                    laser, current_set_point
+                )
+                time.sleep(0.1)
+            for i in track(range(len(values))):
+                self.wavemeter_lock.setSlaveFrequency(
+                    laser, values[i]
+                )
+                if (motmaster_parameter and motmaster_values) is not None:
+                    for k in range(len(motmaster_values)):
+                        _dictionary[motmaster_parameter] = motmaster_values[k]
+                        self.motmaster.Go(_dictionary)
+                        time.sleep(self.interval)
+                        if callback is not None:
+                            result = callback(values[i])
+                            results.append(result)
+                else:
+                    self.motmaster.Go(_dictionary)
+                    time.sleep(self.interval)
+                    if callback is not None:
+                        result = callback(values[i])
+                        results.append(result)
+        except Exception as e:
+            print(f"Error: {e} encountered")
+        return results
+
+    def scan_wm_laser_set_points_with_motmaster_multiple_parameters(
+        self,
+        script: str,
+        laser: str,
+        values: List[Union[int, float]],
+        callback: Callable = None,
+        motmaster_parameters: List[str] = None,
+        motmaster_values: List[Tuple[Union[int, float]]] = None
+    ) -> List[Any]:
+        _dictionary = Dictionary[String, Object]()
+        path = str(self.root.joinpath(f"{script}.cs"))
+        current_set_point = float(self.wavemeter_lock.getSlaveFrequency(
+            laser
+        ))
+        results = []
+        try:
+            self.motmaster.SetScriptPath(path)
+            while current_set_point > values[0]:
+                current_set_point -= 0.00001
+                self.wavemeter_lock.setSlaveFrequency(
+                    laser, current_set_point
+                )
+                time.sleep(0.05)
+            while current_set_point < values[0]:
+                current_set_point += 0.00001
+                self.wavemeter_lock.setSlaveFrequency(
+                    laser, current_set_point
+                )
+                time.sleep(0.1)
+            for i in track(range(len(values))):
+                self.wavemeter_lock.setSlaveFrequency(
+                    laser, values[i]
+                )
+                if (motmaster_parameters and motmaster_values) is not None:
+                    for k in range(len(motmaster_values)):
+                        motmaster_value: Tuple = motmaster_values[k]
+                        for t, parameter in enumerate(motmaster_parameters):
+                            _dictionary[parameter] = motmaster_value[t]
+                        self.motmaster.Go(_dictionary)
+                        time.sleep(self.interval)
+                        if callback is not None:
+                            result = callback(values[i])
+                            results.append(result)
+                else:
+                    self.motmaster.Go(_dictionary)
+                    time.sleep(self.interval)
+                    if callback is not None:
+                        result = callback(values[i])
+                        results.append(result)
+        except Exception as e:
+            print(f"Error: {e} encountered")
+        return results
+
+    def motmaster_single_run(
+        self,
+        script: str
+    ) -> None:
+        _dictionary = Dictionary[String, Object]()
+        path = str(self.root.joinpath(f"{script}.cs"))
+        try:
+            self.motmaster.SetScriptPath(path)
+            self.motmaster.Go(_dictionary)
+            time.sleep(self.interval)
         except Exception as e:
             print(f"Error: {e} encountered")
         return None
@@ -185,10 +374,40 @@ class Experiment():
     ) -> None:
         return None
 
-    def scan_hardware_controller_parameters(
+    def scan_microwave_amplitude(
         self,
         script: str,
-        parameters: List[str],
-        values: List[Union[int, float]] | np.ndarray
+        synthesizer: str = "Gigatronics Synthesizer 2",
+        values: List[float] = []
     ) -> None:
+        path = str(self.root.joinpath(f"{script}.cs"))
+        try:
+            self.motmaster.SetScriptPath(path)
+            for i in track(range(len(values))):
+                self.hardware_controller.tabs[synthesizer].SetAmplitude(
+                    values[i]
+                )
+                self.motmaster.Go()
+                time.sleep(self.interval)
+        except Exception as e:
+            print(f"Error: {e} encountered")
+        return None
+
+    def scan_microwave_frequency(
+        self,
+        script: str,
+        synthesizer: str = "Gigatronics Synthesizer 2",
+        values: List[float] = []
+    ) -> None:
+        path = str(self.root.joinpath(f"{script}.cs"))
+        try:
+            self.motmaster.SetScriptPath(path)
+            for i in track(range(len(values))):
+                self.hardware_controller.tabs[synthesizer].SetFrequency(
+                    values[i]
+                )
+                self.motmaster.Go()
+                time.sleep(self.interval)
+        except Exception as e:
+            print(f"Error: {e} encountered")
         return None
