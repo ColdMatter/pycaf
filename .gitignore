@@ -1,0 +1,10 @@
+# Ignore bin, libs folder
+bin
+libs
+*.egg-info
+
+# Ignore all so files
+*.so
+
+# Ignore all json files
+*.json
