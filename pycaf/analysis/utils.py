@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 import json
 import numpy as np
-
+from scipy.signal import savgol_filter
 
 from .models import (
     Pattern
@@ -233,7 +233,7 @@ def read_images_from_zip(
                         dtype=float
                     )
                 )
-    return images
+    return np.array(images)
 
 
 def read_parameters_from_zip(
@@ -295,6 +295,14 @@ def read_time_of_flight_from_zip_no_mean(
     if len(tofs) > 1:
         tofs = np.array(tofs, dtype=float)
     return sampling_rate, tofs
+
+
+def smooth_time_of_flight(
+    tofs: np.ndarray,
+    points: int = 51,
+    polynomial: int = 2
+) -> np.ndarray:
+    return savgol_filter(tofs, points, polynomial)
 
 
 def crop_image(

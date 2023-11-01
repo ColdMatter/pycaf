@@ -23,7 +23,7 @@ def gaussian_with_offset(
 def fit_gaussian_with_offset(
     x: np.ndarray,
     y: np.ndarray,
-    err: np.ndarray = None,
+    err: np.ndarray = np.array([]),
     n_fine: int = 100
 ) -> GaussianFitWithOffset:
     loc_trial = np.argmax(y)
@@ -62,7 +62,7 @@ def gaussian_without_offset(
 def fit_gaussian_without_offset(
     x: np.ndarray,
     y: np.ndarray,
-    err: np.ndarray = None,
+    err: np.ndarray = np.array([]),
     n_fine: int = 100
 ) -> GaussianFitWithoutOffset:
     loc_trial = np.argmax(y)
@@ -98,7 +98,7 @@ def linear(
 def fit_linear(
     x: np.ndarray,
     y: np.ndarray,
-    err: np.ndarray = None,
+    err: np.ndarray = np.array([]),
     n_fine: int = 100
 ) -> LinearFit:
     s_trial = (y[-1]-y[0])/(x[-1]-x[0])
@@ -131,7 +131,7 @@ def exponential_without_offset(
 def fit_exponential_without_offset(
     x: np.ndarray,
     y: np.ndarray,
-    err: np.ndarray = None,
+    err: np.ndarray = np.array([]),
     n_fine: int = 100
 ) -> ExponentialFitWithoutOffset:
     a_trial = np.max(y)
@@ -167,7 +167,7 @@ def exponential_with_offset(
 def fit_exponential_with_offset(
     x: np.ndarray,
     y: np.ndarray,
-    err: np.ndarray = None,
+    err: np.ndarray = np.array([]),
     n_fine: int = 100
 ) -> ExponentialFitWithOffset:
     a_trial = np.max(y)

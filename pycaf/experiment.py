@@ -6,10 +6,13 @@ import json
 import sys
 
 # NOTE: these imports will only work with the pythonnet package
-import clr
-from System.Collections.Generic import Dictionary
-from System import String, Object
-from System import Activator
+try:
+    import clr
+    from System.Collections.Generic import Dictionary
+    from System import String, Object
+    from System import Activator
+except Exception as e:
+    print(f"Error: {e} encountered, probably no pythonnet")
 
 
 class Experiment():
@@ -85,6 +88,24 @@ class Experiment():
                     )
                 except Exception as e:
                     print(f"Error: {e} encountered")
+            elif key == "picomotor":
+                if path_info["connect"]:
+                    try:
+                        from pylablib.devices import Newport
+                        if Newport.get_usb_devices_number_picomotor() == 1:
+                            self.stage = Newport.Picomotor8742()
+                        elif Newport.get_usb_devices_number_picomotor() == 0:
+                            print("No PicoMotor device detected!")
+                        else:
+                            print("Too many PicoMotor device detected!")
+                    except Exception as e:
+                        print(f"Error: {e} encountered")
+        return None
+
+    def disconnect(
+        self
+    ) -> None:
+        self.stage.close()
         return None
 
     def get_laser_set_points(
@@ -341,9 +362,12 @@ class Experiment():
 
     def motmaster_single_run(
         self,
-        script: str
+        script: str,
+        parameter: str,
+        value: Union[int, float],
     ) -> None:
         _dictionary = Dictionary[String, Object]()
+        _dictionary[parameter] = value
         path = str(self.root.joinpath(f"{script}.cs"))
         try:
             self.motmaster.SetScriptPath(path)
@@ -411,3 +435,88 @@ class Experiment():
         except Exception as e:
             print(f"Error: {e} encountered")
         return None
+
+    def scan_picomotor_steps(
+        self,
+        script: str,
+        motor: str,
+        interval_steps: int,
+        total_steps: int,
+        speed: int = None,
+        accel: int = None,
+        callback: Callable = None,
+        motmaster_parameter: str = None,
+        motmaster_values: List[Tuple[Union[int, float]]] = None
+    ) -> List[Any]:
+        path = str(self.root.joinpath(f"{script}.cs"))
+        _dictionary = Dictionary[String, Object]()
+        try:
+            self.motmaster.SetScriptPath(path)
+            results = []
+            if (speed and accel) is not None:
+                self.stage.setup_velocity(speed=speed, accel=accel)
+            axis: int = self.config["picomotor"]["motor_to_axis"][motor]
+            n_steps: int = int(total_steps/abs(interval_steps))
+            for step_index in track(range(n_steps)):
+                self.stage.move_by(axis=axis, steps=interval_steps)
+                self.stage.wait_move()
+                if (motmaster_parameter and motmaster_values) is not None:
+                    for k in range(len(motmaster_values)):
+                        _dictionary[motmaster_parameter] = motmaster_values[k]
+                        self.motmaster.Go(_dictionary)
+                        time.sleep(self.interval)
+                        if callback is not None:
+                            result = callback(step_index)
+                            results.append(result)
+                else:
+                    self.motmaster.Go()
+                    time.sleep(self.interval)
+                    if callback is not None:
+                        result = callback(step_index)
+                        results.append(result)
+        except Exception as e:
+            print(f"Error: {e} encountered")
+        return results
+
+    def scan_picomotor_steps_with_walking(
+        self,
+        script: str,
+        motors: Tuple[str, str],
+        interval_steps: Tuple[int, int],
+        total_steps: int,
+        speed: int = None,
+        accel: int = None,
+        callback: Callable = None,
+        motmaster_parameter: str = None,
+        motmaster_values: List[Tuple[Union[int, float]]] = None
+    ) -> List[Any]:
+        path = str(self.root.joinpath(f"{script}.cs"))
+        _dictionary = Dictionary[String, Object]()
+        try:
+            self.motmaster.SetScriptPath(path)
+            results = []
+            if (speed and accel) is not None:
+                self.stage.setup_velocity(speed=speed, accel=accel)
+            n_steps: int = int(total_steps/abs(interval_steps))
+            for step_index in track(range(n_steps)):
+                for motor, interval_step in zip(motors, interval_steps):
+                    axis = self.config["picomotor"]["motor_to_axis"][motor]
+                    self.stage.move_by(axis=axis, steps=interval_step)
+                self.stage.wait_move()
+                if (motmaster_parameter and motmaster_values) is not None:
+                    for k in range(len(motmaster_values)):
+                        _dictionary[motmaster_parameter] = motmaster_values[k]
+                        self.motmaster.Go(_dictionary)
+                        time.sleep(self.interval)
+                        if callback is not None:
+                            result = callback(step_index)
+                            results.append(result)
+                else:
+                    self.motmaster.Go()
+                    time.sleep(self.interval)
+                    if callback is not None:
+                        result = callback(step_index)
+                        results.append(result)
+        except Exception as e:
+            print(f"Error: {e} encountered")
+        return results

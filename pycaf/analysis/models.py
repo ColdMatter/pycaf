@@ -13,11 +13,11 @@ class Pattern(BaseModel):
 
 
 class Fit(BaseModel):
-    x: np.ndarray = None
-    y: np.ndarray = None
-    err: np.ndarray = None
-    x_fine: np.ndarray = None
-    y_fine: np.ndarray = None
+    x: np.ndarray = np.array([])
+    y: np.ndarray = np.array([])
+    err: np.ndarray = np.array([])
+    x_fine: np.ndarray = np.array([])
+    y_fine: np.ndarray = np.array([])
 
     class Config:
         arbitrary_types_allowed = True

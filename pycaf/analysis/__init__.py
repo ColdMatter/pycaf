@@ -2,7 +2,11 @@ from .curve_fitting import (
     gaussian_with_offset,
     fit_gaussian_with_offset,
     gaussian_without_offset,
-    fit_gaussian_without_offset
+    fit_gaussian_without_offset,
+    exponential_with_offset,
+    fit_exponential_with_offset,
+    exponential_without_offset,
+    fit_exponential_without_offset
 )
 from .models import (
     Pattern,
@@ -22,6 +26,7 @@ from .utils import (
     read_parameters_from_zip,
     read_time_of_flight_from_zip,
     read_time_of_flight_from_zip_no_mean,
+    smooth_time_of_flight,
     crop_image,
     crop_images,
     calculate_molecule_number_from_fluorescent_images,
