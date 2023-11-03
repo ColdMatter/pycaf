@@ -108,7 +108,7 @@ class Experiment():
         self.stage.close()
         return None
 
-    def get_laser_set_points(
+    def get_laser_set_points_tcl(
         self
     ) -> Dict[str, Dict[str, float]]:
         lasers = {}
@@ -122,6 +122,20 @@ class Experiment():
             lasers[laser] = {"voltage": voltage, "set_point": set_point}
             print(
                 f"{laser}: voltage = {voltage}, set_point = {set_point}"
+            )
+        return lasers
+    
+    def get_laser_set_points_wml(
+        self
+    ) -> Dict[str, Dict[str, float]]:
+        lasers = {}
+        for laser, _ in self.config["lasers"].items():
+            set_point = self.wavemeter_lock.getSlaveFrequency(
+                laser
+            )
+            lasers[laser] = {"set_point": set_point}
+            print(
+                f"{laser}: set_point = {set_point}"
             )
         return lasers
 
