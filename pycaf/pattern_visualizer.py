@@ -69,11 +69,11 @@ class PatternVisualizer():
         for i, file_no in enumerate(file_nos):
             archive: ZipFile = get_zip_archive(
                 self.data_root,
-                self.data_prefix,
                 years[i],
                 months[i],
                 days[i],
-                file_no
+                file_no,
+                prefix=self.data_prefix
             )
             key = f"{years[i]}_{months[i]}_{days[i]}_{file_no}"
             digital_channels: Dict[str, Pattern] = \
