@@ -138,7 +138,6 @@ def fit_exponential_without_offset(
     c_trial = x[np.argmax(y)]
     r_trial = np.nanmean((c_trial-x)/np.log(y/a_trial))
     p0 = [a_trial, c_trial, r_trial]
-    print(p0)
     popt, _ = curve_fit(exponential_without_offset, x, y, p0=p0)
     x_fine = np.linspace(np.min(x), np.max(x), n_fine)
     y_fine = exponential_without_offset(x_fine, *popt)

@@ -70,7 +70,6 @@ class LiveMOT(Experiment):
     ) -> ExponentialFitWithoutOffset:
         numbers = np.sum(images, axis=(1, 2))
         timesteps = timegap_in_ms*np.arange(0, len(numbers))
-        print(timesteps)
         lifetime_fit = fit_exponential_without_offset(timesteps, numbers)
         return lifetime_fit
 
@@ -147,6 +146,7 @@ class LiveMOT(Experiment):
                     images,
                     self.timegap_in_ms
                 )
+                number = lifetime_fit.y[0]
             except Exception as e:
                 print(f"Error {e} occured in fitting.")
         else:
@@ -181,31 +181,38 @@ if __name__ == "__main__":
         crop_col_end=-1
     )
 
-    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+    fig, ax = plt.subplots(2, 1, figsize=(8, 8))
+    number_list = []
 
     def animate(i):
-        print(f"animated: {i}")
-        _, lifetime_fit, _, _ = live_mot()
+        print(f"Iteration: {i}")
+        number, lifetime_fit, _, _ = live_mot()
         if lifetime_fit is not None:
+            if number is not None:
+                number_list.append(number)
+                number_list = number_list[-40:]
             ax.clear()
-            ax.plot(
+            ax[0].plot(
                 lifetime_fit.x_fine,
                 lifetime_fit.y_fine,
                 "-r"
             )
-            ax.plot(
+            ax[0].plot(
                 lifetime_fit.x,
                 lifetime_fit.y,
                 "ok"
             )
-            ax.set_title(
+            ax[0].set_xlabel("time in ms")
+            ax[0].set_ylabel("N Molecules [a. u.]")
+            ax[0].set_title(
                 f"Current MOT lifetime: {lifetime_fit.rate:.3f} ms"
             )
-            # line.set_data(lifetime_fit.x, lifetime_fit.y)
-            # fig.canvas.draw()
+            ax[1].plot(np.arange(0, len(number_list)), number_list, "-ok")
+            ax[1].set_xlim((0, len(number_list)+10))
+            ax[1].set_xlabel("Iteration")
             fig.canvas.draw()
             fig.canvas.flush_events()
             time.sleep(0.5)
 
-    ani = animation.FuncAnimation(fig, animate, interval=10, repeat=True)
+    ani = animation.FuncAnimation(fig, animate, repeat=True)
     plt.show()
