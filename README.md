@@ -10,7 +10,7 @@ To get started, install anaconda in your system.
 
 Clone this repository
 ```
-git clone https://github.com/your-username/pycaf.git
+git clone https://github.com/ColdMatter/pycaf.git
 ```
 
 Then create a new environment using the command
