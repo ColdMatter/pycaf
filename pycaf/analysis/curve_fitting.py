@@ -172,7 +172,7 @@ def fit_exponential_with_offset(
 ) -> ExponentialFitWithOffset:
     a_trial = np.max(y)
     c_trial = x[np.argmax(y)]
-    r_trial = np.abs((x[-1]-x[0])/np.log(np.abs(y[-1]/y[0])))
+    r_trial = np.nanmean((c_trial-x)/np.log(y/a_trial))
     o_trial = np.min(y)
     p0 = [a_trial, c_trial, r_trial, o_trial]
     popt, _ = curve_fit(exponential_with_offset, x, y, p0=p0)
