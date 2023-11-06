@@ -68,7 +68,11 @@ class LiveMOT(Experiment):
         )
         self.fig.canvas.mpl_connect('button_press_event', self.toggle_pause)
 
-    def toggle_pause(self):
+    def toggle_pause(
+        self,
+        *args,
+        **kwargs
+    ) -> None:
         if self.paused:
             self.ani.resume()
         else:
@@ -146,7 +150,7 @@ class LiveMOT(Experiment):
                 self.lifetime_fit.x_fine,
                 self.lifetime_fit.y_fine,
                 "-r",
-                label=f"Lifetime: {self.lifetime_fit.rate:.3f} ms"
+                label=f"Lifetime: {self.lifetime_fit.rate:.2f} ms"
             )
         if self.h_profile_fit is not None:
             self.ax[1, 0].plot(
@@ -159,7 +163,7 @@ class LiveMOT(Experiment):
                 self.h_profile_fit.x_fine,
                 self.h_profile_fit.y_fine,
                 "-r",
-                label=f"Horiz. width: {self.h_profile_fit.width:.3f}"
+                label=f"Horiz. width: {self.h_profile_fit.width:.2f}"
             )
         if self.v_profile_fit is not None:
             self.ax[1, 0].plot(
@@ -172,7 +176,7 @@ class LiveMOT(Experiment):
                 self.v_profile_fit.x_fine,
                 self.v_profile_fit.y_fine,
                 "-b",
-                label=f"Vert. width: {self.v_profile_fit.width}"
+                label=f"Vert. width: {self.v_profile_fit.width:.2f}"
             )
         if len(self.number_list):
             self.ax[0, 1].plot(
@@ -184,7 +188,7 @@ class LiveMOT(Experiment):
         if len(self.lifetime_list):
             self.ax[1, 1].plot(
                 np.arange(0, len(self.lifetime_list)),
-                self.number_list,
+                self.lifetime_list,
                 "-ok",
                 label="Lifetime"
             )
@@ -203,7 +207,7 @@ class LiveMOT(Experiment):
             self.fig.canvas.draw()
             self.fig.suptitle(f"Current frame no. : {frame}")
             self.fig.canvas.flush_events()
-            time.sleep(0.5)
+            time.sleep(self.interval)
         return None
 
     def _call_motmaster_and_analyse_image(
