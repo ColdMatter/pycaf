@@ -58,12 +58,22 @@ class Experiment():
                     )
                 except Exception as e:
                     print(f"Error: {e} encountered")
-            elif key == "hardware_controller":
+            elif key == "cafbec_hardware_controller":
                 self._add_ref(path_info["exe_path"])
                 try:
                     import CaFBECHadwareController
                     self.hardware_controller = Activator.GetObject(
                         CaFBECHadwareController.Controller,
+                        path_info["remote_path"]
+                    )
+                except Exception as e:
+                    print(f"Error: {e} encountered")
+            elif key == "caf_hardware_controller":
+                self._add_ref(path_info["exe_path"])
+                try:
+                    import MoleculeMOTHadwareControl
+                    self.hardware_controller = Activator.GetObject(
+                        MoleculeMOTHadwareControl.Controller,
                         path_info["remote_path"]
                     )
                 except Exception as e:
@@ -377,11 +387,12 @@ class Experiment():
     def motmaster_single_run(
         self,
         script: str,
-        parameter: str,
-        value: Union[int, float],
+        parameter: str = "",
+        value: Union[int, float] = None,
     ) -> None:
         _dictionary = Dictionary[String, Object]()
-        _dictionary[parameter] = value
+        if len(parameter):
+            _dictionary[parameter] = value
         path = str(self.root.joinpath(f"{script}.cs"))
         try:
             self.motmaster.SetScriptPath(path)
