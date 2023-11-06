@@ -182,15 +182,17 @@ if __name__ == "__main__":
     )
 
     fig, ax = plt.subplots(2, 1, figsize=(8, 8))
-    number_list = []
+    number_list = np.array([], dtype=float)
 
-    def animate(i):
-        print(f"Iteration: {i}")
+    def animate(
+        i: int
+    ) -> None:
+        global number_list
+        print(f"Frame no: {i}")
         number, lifetime_fit, _, _ = live_mot()
         if lifetime_fit is not None:
             if number is not None:
-                number_list.append(number)
-                number_list = number_list[-40:]
+                number_list = np.append(number_list, number)
             ax.clear()
             ax[0].plot(
                 lifetime_fit.x_fine,
@@ -213,6 +215,11 @@ if __name__ == "__main__":
             fig.canvas.draw()
             fig.canvas.flush_events()
             time.sleep(0.5)
+        return None
 
-    ani = animation.FuncAnimation(fig, animate, repeat=True)
+    ani = animation.FuncAnimation(
+        fig,
+        animate,
+        repeat=True
+    )
     plt.show()

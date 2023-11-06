@@ -124,7 +124,7 @@ class Experiment():
                 f"{laser}: voltage = {voltage}, set_point = {set_point}"
             )
         return lasers
-    
+
     def get_laser_set_points_wml(
         self
     ) -> Dict[str, Dict[str, float]]:
