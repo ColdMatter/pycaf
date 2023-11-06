@@ -86,12 +86,12 @@ class LiveMOT(Experiment):
         h_profile = np.sum(image, axis=0)
         v_profile = np.sum(image, axis=1)
         h_profile_fit = fit_gaussian_without_offset(
-            h_profile,
-            np.arange(0, len(h_profile))
+            np.arange(0, len(h_profile)),
+            h_profile
         )
         v_profile_fit = fit_gaussian_without_offset(
+            np.arange(0, len(v_profile)),
             v_profile,
-            np.arange(0, len(v_profile))
         )
         return (h_profile_fit, v_profile_fit)
 
