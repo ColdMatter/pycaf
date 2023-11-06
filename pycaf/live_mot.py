@@ -1,4 +1,4 @@
-from typing import Union, Tuple
+from typing import Union, Tuple, List
 import numpy as np
 from PIL import Image
 import os
@@ -180,6 +180,7 @@ if __name__ == "__main__":
 
     fig, ax = plt.subplots(2, 2, figsize=(10, 10))
     fig.subplots_adjust(hspace=0.2, wspace=0.02)
+    paused = False
     number_list = np.array([], dtype=float)
     lifetime_list = np.array([], dtype=float)
 
@@ -263,4 +264,14 @@ if __name__ == "__main__":
         animate,
         repeat=True
     )
+
+    def toggle_pause():
+        global paused
+        if paused:
+            ani.resume()
+        else:
+            ani.pause()
+        paused = not paused
+
+    fig.canvas.mpl_connect('button_press_event', toggle_pause)
     plt.show()
