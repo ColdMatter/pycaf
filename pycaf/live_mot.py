@@ -81,8 +81,9 @@ class LiveMOT(Experiment):
 
     def size_analysis(
         self,
-        image: np.ndarray
+        images: np.ndarray
     ) -> Tuple[GaussianFitWithoutOffset, GaussianFitWithoutOffset]:
+        image = images[0, :, :]
         h_profile = np.sum(image, axis=0)
         v_profile = np.sum(image, axis=1)
         h_profile_fit = fit_gaussian_without_offset(
@@ -133,26 +134,22 @@ class LiveMOT(Experiment):
         )
         images = self.read_images()
         self.delete_images()
-        if self.is_lifetime_required:
-            bg = images[-1, :, :]
-            images -= bg
-            images = images[
-                1:,
-                self.crop_row_start: self.crop_row_end,
-                self.crop_col_start: self.crop_col_end
-            ]
-            try:
-                lifetime_fit = self.lifetime_analysis(
-                    images,
-                    self.timegap_in_ms
-                )
-                number = lifetime_fit.y[0]
-            except Exception as e:
-                print(f"Error {e} occured in fitting.")
-        else:
-            image = np.mean(images, axis=0)
-            number = self.number_analysis(image)
-            # h_profile_fit, v_profile_fit = self.size_analysis(image)
+        bg = images[-1, :, :]
+        images -= bg
+        images = images[
+            1:,
+            self.crop_row_start: self.crop_row_end,
+            self.crop_col_start: self.crop_col_end
+        ]
+        try:
+            lifetime_fit = self.lifetime_analysis(
+                images,
+                self.timegap_in_ms
+            )
+            number = lifetime_fit.y[0]
+            h_profile_fit, v_profile_fit = self.size_analysis(images)
+        except Exception as e:
+            print(f"Error {e} occured in fitting.")
         time.sleep(0.1)
         return number, lifetime_fit, h_profile_fit, v_profile_fit
 
@@ -181,38 +178,81 @@ if __name__ == "__main__":
         crop_col_end=-1
     )
 
-    fig, ax = plt.subplots(2, 1, figsize=(8, 8))
+    fig, ax = plt.subplots(2, 2, figsize=(10, 10))
+    fig.subplots_adjust(hspace=0.2, wspace=0.02)
     number_list = np.array([], dtype=float)
+    lifetime_list = np.array([], dtype=float)
 
     def animate(
         i: int
     ) -> None:
-        global number_list
-        print(f"Frame no: {i}")
-        number, lifetime_fit, _, _ = live_mot()
+        global number_list, lifetime_list
+        number, lifetime_fit, h_profile_fit, v_profile_fit = live_mot()
         if lifetime_fit is not None:
+            lifetime_list = np.append(lifetime_list, lifetime_fit.rate)
             if number is not None:
                 number_list = np.append(number_list, number)
-            for iax in ax:
+            for iax in ax.flatten():
                 iax.clear()
-            ax[0].plot(
-                lifetime_fit.x_fine,
-                lifetime_fit.y_fine,
-                "-r"
-            )
-            ax[0].plot(
+            ax[0, 0].plot(
                 lifetime_fit.x,
                 lifetime_fit.y,
                 "ok"
             )
-            ax[0].set_xlabel("time in ms")
-            ax[0].set_ylabel("N Molecules [a. u.]")
-            ax[0].set_title(
-                f"Current MOT lifetime: {lifetime_fit.rate:.3f} ms"
+            ax[0, 0].plot(
+                lifetime_fit.x_fine,
+                lifetime_fit.y_fine,
+                "-r",
+                label=f"Lifetime: {lifetime_fit.rate:.3f} ms"
             )
-            ax[1].plot(np.arange(0, len(number_list)), number_list, "-ok")
-            ax[1].set_xlim((0, len(number_list)+10))
-            ax[1].set_xlabel("Iteration")
+            ax[1, 0].plot(
+                h_profile_fit.x,
+                h_profile_fit.y,
+                "or",
+                label="Horizontal"
+            )
+            ax[1, 0].plot(
+                h_profile_fit.x_fine,
+                h_profile_fit.y_fine,
+                "-r",
+                label=f"Horiz. width: {h_profile_fit.width:.3f}"
+            )
+            ax[1, 0].plot(
+                v_profile_fit.x,
+                v_profile_fit.y,
+                "ob",
+                label="Vertical"
+            )
+            ax[1, 0].plot(
+                v_profile_fit.x_fine,
+                v_profile_fit.y_fine,
+                "-b",
+                label=f"Vert. width: {v_profile_fit.width}"
+            )
+            ax[0, 1].plot(
+                np.arange(0, len(number_list)),
+                number_list,
+                "-ok",
+                label="Total Count"
+            )
+            ax[1, 1].plot(
+                np.arange(0, len(number_list)),
+                number_list,
+                "-ok",
+                label="Lifetime"
+            )
+            ax[0, 1].yaxis.set_label_position("right")
+            ax[0, 1].yaxis.tick_right()
+            ax[1, 1].yaxis.set_label_position("right")
+            ax[1, 1].yaxis.tick_right()
+            ax[0, 1].set_xlim((0, len(number_list)+10))
+            ax[1, 1].set_xlim((0, len(lifetime_list)+10))
+            ax[0, 0].set_xlabel("time in ms")
+            ax[1, 1].set_xlabel("Iteration")
+            ax[0, 1].set_xlabel("Iteration")
+            ax[1, 0].set_xlabel("Distance [a. u.]")
+            for iax in ax.flatten():
+                iax.legend()
             fig.canvas.draw()
             fig.canvas.flush_events()
             time.sleep(0.5)
