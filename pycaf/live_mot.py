@@ -193,7 +193,8 @@ if __name__ == "__main__":
         if lifetime_fit is not None:
             if number is not None:
                 number_list = np.append(number_list, number)
-            ax.clear()
+            for iax in ax:
+                iax.clear()
             ax[0].plot(
                 lifetime_fit.x_fine,
                 lifetime_fit.y_fine,
