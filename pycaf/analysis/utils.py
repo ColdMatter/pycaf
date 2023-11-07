@@ -304,12 +304,16 @@ def smooth_time_of_flight(
 ) -> np.ndarray:
     return savgol_filter(tofs, points, polynomial)
 
+
 def remove_outliers(
-        tof: np.ndarray, 
-        threshold = 5.0) -> np.ndarray:
-    '''Remove outliers in tof and replace it by average of adjacent points.
-        Input 1d tof array, output 1d modified array.
-        Use lower threshold to apply heavier filtering'''
+    tof: np.ndarray,
+    threshold: float = 5.0
+) -> np.ndarray:
+    '''
+    Remove outliers in tof and replace it by average of adjacent points.
+    Input 1d tof array, output 1d modified array.
+    Use lower threshold to apply heavier filtering
+    '''
     modified_tof = tof
     length = len(tof)
 
@@ -348,8 +352,8 @@ def remove_outliers(
             index_2 = length - 1
 
         modified_tof[index + 1] = (tof[index_1] + tof[index_2]) / 2
-
     return modified_tof
+
 
 def crop_image(
     image: np.ndarray,
