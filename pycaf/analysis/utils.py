@@ -329,9 +329,10 @@ def remove_outliers(
     # Calculate the Modified Z-scores for each data point
     modified_z_scores = 0.6745 * (tof_anomaly - median) / mad
 
-    # Find the indices of the data points with Modified Z-score above the threshold (outliers)
+    # Find the indices of the data points with Modified
+    # Z-score above the threshold (outliers)
     outliers_indices = np.where(np.abs(modified_z_scores) > threshold)[0]
-    normal_indeces = np.arange(0,length)
+    normal_indeces = np.arange(0, length)
     normal_indeces = [x for x in normal_indeces if x not in outliers_indices]
 
     # Modify tof by replaceing outliers with average of adjacent points
