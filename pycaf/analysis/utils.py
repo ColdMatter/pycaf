@@ -304,6 +304,52 @@ def smooth_time_of_flight(
 ) -> np.ndarray:
     return savgol_filter(tofs, points, polynomial)
 
+def remove_outliers(
+        tof: np.ndarray, 
+        threshold = 5.0) -> np.ndarray:
+    '''Remove outliers in tof and replace it by average of adjacent points.
+        Input 1d tof array, output 1d modified array.
+        Use lower threshold to apply heavier filtering'''
+    modified_tof = tof
+    length = len(tof)
+
+    tof_anomaly = []
+    for i in range(length - 2):
+        tof_anomaly.append(abs(tof[i] - 2 * tof[i+1] + tof[i+2]))
+
+    # Use Modified Z-Score method to identify outliers of tof_anomaly
+    # Calculate the median and the median absolute deviation (MAD)
+    median = np.median(tof_anomaly)
+    mad = np.median(np.abs(tof_anomaly - median))
+
+    # Calculate the Modified Z-scores for each data point
+    modified_z_scores = 0.6745 * (tof_anomaly - median) / mad
+
+    # Find the indices of the data points with Modified Z-score above the threshold (outliers)
+    outliers_indices = np.where(np.abs(modified_z_scores) > threshold)[0]
+    normal_indeces = np.arange(0,length)
+    normal_indeces = [x for x in normal_indeces if x not in outliers_indices]
+
+    # Modify tof by replaceing outliers with average of adjacent points
+    for index in outliers_indices:
+        index_1 = index
+        index_2 = index + 2
+
+        while index_1 in outliers_indices:
+            index_1 -= 1
+
+        while index_2 in outliers_indices:
+            index_2 += 1
+
+        if index_1 < 0:
+            index_1 = 0
+
+        if index_2 >= length:
+            index_2 = length - 1
+
+        modified_tof[index + 1] = (tof[index_1] + tof[index_2]) / 2
+
+    return modified_tof
 
 def crop_image(
     image: np.ndarray,
