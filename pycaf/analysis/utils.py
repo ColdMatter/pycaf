@@ -246,14 +246,14 @@ def read_parameters_from_zip(
                 script_parameters = parameter_file.readlines()
                 for line in script_parameters:
                     name, value, _ = line.split(b"\t")
-                    parameters[name.decode("utf-8")] = np.float(value)
+                    parameters[name.decode("utf-8")] = float(value)
         elif filename[-18:] == "hardwareReport.txt":
             with archive.open(filename) as hardware_file:
                 hardware_parameters = hardware_file.readlines()
                 for line in hardware_parameters:
                     name, value, _ = line.split(b"\t")
                     if value.isdigit():
-                        parameters[name.decode("utf-8")] = np.float(value)
+                        parameters[name.decode("utf-8")] = float(value)
     return parameters
 
 
