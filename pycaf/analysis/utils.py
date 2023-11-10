@@ -40,7 +40,8 @@ def get_zip_archive(
     month: int,
     day: int,
     file_no: int,
-    prefix: str
+    prefix: str,
+    mode: str = "r"
 ) -> ZipFile:
     month_dict: Dict[int, str] = \
         {
@@ -68,7 +69,7 @@ def get_zip_archive(
         day_filled,
         f"{prefix}{day_filled}{month_filled}{year_filled}00_{file_filled}.zip"
     )
-    return ZipFile(filepath)
+    return ZipFile(filepath, mode=mode)
 
 
 def create_file_list(
