@@ -3,7 +3,7 @@ import time
 import os
 import gc
 import numpy as np
-from PIL import Image as PILImage
+from PIL import Image
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -13,7 +13,13 @@ from .experiment import Experiment
 sns.set()
 
 
-# FIXME: redesign to use both TCL and WMLock
+def _get_image_from_file(
+    filepath: str
+) -> np.ndarray:
+    # BUG FIX: Python was not realeasing the file resource for deletion
+    with Image.open(filepath, 'r') as imagefile:
+        image = np.array(imagefile, dtype=float)
+    return image
 
 
 class MOTAutoTunerWML():
@@ -89,7 +95,7 @@ class MOTAutoTunerWML():
                         [set_point],
                         self.fl_number_detector,
                         self.field_parameter,
-                        self.mot_field_value 
+                        self.mot_field_value
                     )
             else:
                 print(
@@ -160,24 +166,11 @@ class MOTAutoTunerWML():
                         head_length=0.03,
                         width=1.0,
                         fc='r', ec='r')
-                    named_ax[laser].set_title(
-                        f"{laser} set @ {getattr(self, f'{laser}_setpoint')} THz"
-                    )
+                    text = f"{laser} set " + \
+                        "@ {getattr(self, f'{laser}_setpoint')} THz"
+                    named_ax[laser].set_title(text)
             else:
                 named_ax[laser].set_title(f"{laser} not scanned")
             named_ax[laser].set_xlabel("Detuning to previous setpoint (MHz)")
             named_ax[laser].set_ylim((0, 1.2))
         return None
-
-
-def _get_image_from_file(
-    filepath: str
-) -> np.ndarray:
-    """
-    Internal call wrapper function to force python to release the 
-    image file.
-    #bugfix to python not realeasing file resource for deleting
-    """
-    with PILImage.open(filepath, 'r') as imagefile:
-        image = np.array(imagefile, dtype=float)
-    return image

@@ -3,7 +3,7 @@ import time
 import os
 import gc
 import numpy as np
-from PIL import Image as PILImage
+from PIL import Image
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -13,7 +13,13 @@ from .experiment import Experiment
 sns.set()
 
 
-# FIXME: redesign to use both TCL and WMLock
+def _get_image_from_file(
+    filepath: str
+) -> np.ndarray:
+    # BUG FIX: Python was not realeasing the file resource for deletion
+    with Image.open(filepath, 'r') as imagefile:
+        image = np.array(imagefile, dtype=float)
+    return image
 
 
 class MOTAutoTuner():
@@ -167,16 +173,3 @@ class MOTAutoTuner():
             named_ax[laser].set_xlabel("TCL Volatge [V]")
             named_ax[laser].set_ylim((0, 1.2))
         return None
-
-
-def _get_image_from_file(
-    filepath: str
-) -> np.ndarray:
-    """
-    Internal call wrapper function to force python to release the 
-    image file.
-    #bugfix to python not realeasing file resource for deleting
-    """
-    with PILImage.open(filepath, 'r') as imagefile:
-        image = np.array(imagefile, dtype=float)
-    return image
