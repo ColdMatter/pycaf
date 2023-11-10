@@ -40,5 +40,7 @@ from .utils import (
     calculate_optical_density_from_absorption_images,
     calculate_atom_number_from_absorption_images,
     calculate_cloud_size_from_image_1d_gaussian,
-    calculate_cloud_size_from_image_2d_gaussian
+    calculate_cloud_size_from_image_2d_gaussian,
+    calculate_temperature,
+    calculate_lifetime
 )
