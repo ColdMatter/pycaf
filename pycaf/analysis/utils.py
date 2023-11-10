@@ -114,6 +114,8 @@ def remote_image_injector(
                     i += 1
         for img in imgs:
             os.remove(os.path.join(remote_path, img))
+        for archive in archives:
+            archive.close()
     elif len(imgs) == 0:
         print("No Image to insert")
     elif len(imgs) < len(archives)*n_images:
@@ -195,6 +197,7 @@ def read_digital_patterns_from_zip(
                             time=filled_timings,
                             event=filled_patterns
                         )
+    archive.close()
     return channels
 
 
@@ -243,6 +246,7 @@ def read_analog_patterns_from_zip(
             time=filled_timings,
             event=filled_voltages
         )
+    archive.close()
     return channels
 
 
@@ -261,6 +265,7 @@ def read_images_from_zip(
                         dtype=float
                     )
                 )
+    archive.close()
     return np.array(images)
 
 
@@ -282,6 +287,7 @@ def read_parameters_from_zip(
                     name, value, _ = line.split(b"\t")
                     if value.isdigit():
                         parameters[name.decode("utf-8")] = float(value)
+    archive.close()
     return parameters
 
 
@@ -302,6 +308,7 @@ def read_time_of_flight_from_zip(
                 )
     if len(tofs) > 1:
         tofs = np.array(tofs, dtype=float).mean(axis=0)
+    archive.close()
     return sampling_rate, tofs
 
 
@@ -322,6 +329,7 @@ def read_time_of_flight_from_zip_no_mean(
                 )
     if len(tofs) > 1:
         tofs = np.array(tofs, dtype=float)
+    archive.close()
     return sampling_rate, tofs
 
 
