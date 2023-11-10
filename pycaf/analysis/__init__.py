@@ -6,7 +6,11 @@ from .curve_fitting import (
     exponential_with_offset,
     fit_exponential_with_offset,
     exponential_without_offset,
-    fit_exponential_without_offset
+    fit_exponential_without_offset,
+    gaussian_with_offset_2D,
+    fit_gaussian_with_offset_2D,
+    gaussian_without_offset_2D,
+    fit_gaussian_without_offset_2D
 )
 from .models import (
     Pattern,

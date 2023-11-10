@@ -114,11 +114,25 @@ def fit_gaussian_without_offset_2D(
     data: np.ndarray,
 ) -> GaussianFitWithoutOffset2D:
     amplitude_trial = 0
-    centre_trial = (0, 0)
-    sigma_trial = (0, 0)
+    centre_trial = []
+    sigma_trial = []
     theta_trial = 0
+    for i, axis in zip(range(2), [x, y]):
+        _sum = np.sum(data, axis=i)
+        loc_trial = np.argmax(_sum)
+        a_trial = _sum[loc_trial]
+        c_trial = axis[loc_trial]
+        halfmax_y = np.max(_sum)/2.0
+        s_trial = np.abs(axis[0]-axis[1])*len(_sum[_sum > halfmax_y])/2.0
+        if amplitude_trial < a_trial:
+            amplitude_trial = a_trial
+        centre_trial.append(c_trial)
+        sigma_trial.append(s_trial)
     mx, my = np.meshgrid(x, y)
-    p0 = [amplitude_trial, centre_trial, sigma_trial, theta_trial]
+    p0 = [
+        amplitude_trial, tuple(centre_trial),
+        tuple(sigma_trial), theta_trial
+    ]
     popt, _ = curve_fit(gaussian_without_offset_2D, (mx, my), data, p0=p0)
     fit = GaussianFitWithoutOffset2D(
         amplitude=popt[0],
@@ -157,14 +171,25 @@ def fit_gaussian_with_offset_2D(
     data: np.ndarray,
 ) -> GaussianFitWithOffset2D:
     amplitude_trial = 0
-    centre_trial = (0, 0)
-    sigma_trial = (0, 0)
-    offset_trial = 0
+    centre_trial = []
+    sigma_trial = []
     theta_trial = 0
+    offset_trial = np.min(data)
+    for i, axis in zip(range(2), [x, y]):
+        _sum = np.sum(data, axis=i)
+        loc_trial = np.argmax(_sum)
+        a_trial = _sum[loc_trial]
+        c_trial = axis[loc_trial]
+        halfmax_y = np.max(_sum)/2.0
+        s_trial = np.abs(axis[0]-axis[1])*len(_sum[_sum > halfmax_y])/2.0
+        if amplitude_trial < a_trial:
+            amplitude_trial = a_trial
+        centre_trial.append(c_trial)
+        sigma_trial.append(s_trial)
     mx, my = np.meshgrid(x, y)
     p0 = [
-        amplitude_trial, centre_trial, sigma_trial,
-        offset_trial, theta_trial
+        amplitude_trial, tuple(centre_trial),
+        tuple(sigma_trial), offset_trial, theta_trial
     ]
     popt, _ = curve_fit(gaussian_with_offset_2D, (mx, my), data, p0=p0)
     fit = GaussianFitWithOffset2D(
