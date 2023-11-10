@@ -24,8 +24,9 @@ class Fit(BaseModel):
 
 
 class Fit2D(BaseModel):
+    x: np.ndarray = np.array([])
+    y: np.ndarray = np.array([])
     data: np.ndarray = np.array([[]])
-    err: np.ndarray = np.array([[]])
 
     class Config:
         arbitrary_types_allowed = True
