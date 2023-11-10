@@ -3,6 +3,7 @@ from zipfile import ZipFile
 from PIL import Image
 from pathlib import Path
 import re
+import os
 import json
 import numpy as np
 from scipy.signal import savgol_filter
@@ -93,6 +94,33 @@ def create_file_list(
                 if i not in exclude_files:
                     background_files.append(i)
     return files, background_files
+
+
+def remote_image_injector(
+    archives: List[ZipFile],
+    n_images: int,
+    remote_path: str
+) -> None:
+    imgs = os.listdir(remote_path)
+    imgs.sort(key=natural_keys)
+    if len(imgs) == len(archives)*n_images:
+        print("Inserting images to the zip files...")
+        i = 0
+        for archive in archives:
+            files = archive.namelist()
+            for _ in range(n_images):
+                if imgs[i] not in files:
+                    archive.write(os.path.join(remote_path, imgs[i]), imgs[i])
+                    i += 1
+        for img in imgs:
+            os.remove(os.path.join(remote_path, img))
+    elif len(imgs) == 0:
+        print("No Image to insert")
+    elif len(imgs) < len(archives)*n_images:
+        print("There seems to be less number of images than required!")
+    elif len(imgs) > len(archives)*n_images:
+        print("There are more images than expected!")
+    return None
 
 
 def extract_pattern_from_json_string(
