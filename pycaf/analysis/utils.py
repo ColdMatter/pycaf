@@ -11,7 +11,7 @@ from scipy.signal import savgol_filter
 from .models import (
     Pattern,
     GaussianFitWithOffset,
-    GaussianFitWithoutOffset2D
+    GaussianFitWithOffset2D
 )
 from .curve_fitting import (
     linear,
@@ -24,8 +24,8 @@ from .curve_fitting import (
     fit_exponential_without_offset,
     exponential_with_offset,
     fit_exponential_with_offset,
-    gaussian_without_offset_2D,
-    fit_gaussian_without_offset_2D
+    gaussian_with_offset_2D,
+    fit_gaussian_with_offset_2D
 )
 
 
@@ -490,11 +490,11 @@ def calculate_cloud_size_from_image_2d_gaussian(
     pixel_size: float,
     bin_size: int,
     magnification: float,
-) -> GaussianFitWithoutOffset2D:
+) -> GaussianFitWithOffset2D:
     scale = bin_size/magnification*pixel_size
     x = np.arange(0, image.shape[1])*scale
     y = np.arange(0, image.shape[0])*scale
-    fit = fit_gaussian_without_offset_2D(x, y, image)
+    fit = fit_gaussian_with_offset_2D(x, y, image)
     return fit
 
 
