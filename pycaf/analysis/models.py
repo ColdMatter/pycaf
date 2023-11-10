@@ -1,4 +1,4 @@
-from typing import Dict, Union
+from typing import Dict, Union, Tuple
 from pydantic import BaseModel
 import numpy as np
 
@@ -18,6 +18,14 @@ class Fit(BaseModel):
     err: np.ndarray = np.array([])
     x_fine: np.ndarray = np.array([])
     y_fine: np.ndarray = np.array([])
+
+    class Config:
+        arbitrary_types_allowed = True
+
+
+class Fit2D(BaseModel):
+    data: np.ndarray = np.array([[]])
+    err: np.ndarray = np.array([[]])
 
     class Config:
         arbitrary_types_allowed = True
@@ -45,6 +53,16 @@ class ExponentialFitWithoutOffset(Fit):
 
 
 class ExponentialFitWithOffset(ExponentialFitWithoutOffset):
+    offset: float
+
+
+class GaussianFitWithoutOffset2D(Fit2D):
+    amplitude: float
+    centre: Tuple[float, float]
+    width: Tuple[float, float]
+
+
+class GaussianFitWithOffset2D(GaussianFitWithoutOffset2D):
     offset: float
 
 

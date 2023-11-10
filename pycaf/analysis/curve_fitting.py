@@ -1,3 +1,4 @@
+from typing import Tuple
 from scipy.optimize import curve_fit
 import numpy as np
 
@@ -6,7 +7,9 @@ from .models import (
     GaussianFitWithoutOffset,
     LinearFit,
     ExponentialFitWithOffset,
-    ExponentialFitWithoutOffset
+    ExponentialFitWithoutOffset,
+    GaussianFitWithoutOffset2D,
+    GaussianFitWithOffset2D
 )
 
 
@@ -85,6 +88,37 @@ def fit_gaussian_without_offset(
         width=popt[2]
     )
     return fit
+
+
+def gaussian_without_offset_2D(
+    xy: np.ndarray,
+    amplitude: float,
+    centre: Tuple[float, float],
+    sigma: Tuple[float, float]
+) -> None:
+    return None
+
+
+def fit_gaussian_without_offset_2D(
+    data: np.ndarray,
+) -> GaussianFitWithoutOffset2D:
+    return None
+
+
+def gaussian_with_offset_2D(
+    xy: np.ndarray,
+    amplitude: float,
+    centre: Tuple[float, float],
+    sigma: Tuple[float, float],
+    offset: float
+) -> None:
+    return None
+
+
+def fit_gaussian_with_offset_2D(
+    data: np.ndarray,
+) -> GaussianFitWithOffset2D:
+    return None
 
 
 def linear(

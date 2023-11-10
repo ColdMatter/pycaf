@@ -9,7 +9,8 @@ import numpy as np
 from scipy.signal import savgol_filter
 
 from .models import (
-    Pattern
+    Pattern,
+    GaussianFitWithOffset
 )
 from .curve_fitting import (
     linear,
@@ -465,7 +466,7 @@ def calculate_cloud_size_from_image_1d_gaussian(
     pixel_size: float,
     bin_size: int,
     magnification: float,
-) -> Tuple[float, float]:
+) -> Tuple[GaussianFitWithOffset, GaussianFitWithOffset]:
     vertical_integrate = np.sum(image, axis=0)
     horizontal_integrate = np.sum(image, axis=1)
     scale = (pixel_size*bin_size/magnification)
@@ -477,7 +478,7 @@ def calculate_cloud_size_from_image_1d_gaussian(
         scale*np.arange(0, len(horizontal_integrate)),
         horizontal_integrate
     )
-    return vertival_fit["sigma"], horizontal_fit["sigma"]
+    return (vertival_fit, horizontal_fit)
 
 
 def calculate_cloud_size_from_image_2d_gaussian(
@@ -485,17 +486,19 @@ def calculate_cloud_size_from_image_2d_gaussian(
     pixel_size: float,
     bin_size: int,
     magnification: float,
-) -> Tuple[float, float]:
-    # FIXME
-    vertical_integrate = np.sum(image, axis=0)
-    horizontal_integrate = np.sum(image, axis=1)
-    scale = (pixel_size*bin_size/magnification)
-    vertival_fit = fit_gaussian_with_offset(
-        scale*np.arange(0, len(vertical_integrate)),
-        vertical_integrate
-    )
-    horizontal_fit = fit_gaussian_with_offset(
-        scale*np.arange(0, len(horizontal_integrate)),
-        horizontal_integrate
-    )
-    return vertival_fit["sigma"], horizontal_fit["sigma"]
+) -> None:
+    return None
+
+
+def calculate_temperature(
+    archives: List[ZipFile],
+    temporal_parameter: str,
+) -> None:
+    return None
+
+
+def calculate_lifetime(
+    archives: List[ZipFile],
+    temporal_parameter: str,
+) -> None:
+    return None

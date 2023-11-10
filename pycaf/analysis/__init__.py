@@ -15,7 +15,9 @@ from .models import (
     GaussianFitWithOffset,
     GaussianFitWithoutOffset,
     ExponentialFitWithoutOffset,
-    ExponentialFitWithOffset
+    ExponentialFitWithOffset,
+    GaussianFitWithOffset2D,
+    GaussianFitWithoutOffset2D
 )
 from .utils import (
     get_zip_archive,
@@ -27,6 +29,7 @@ from .utils import (
     read_time_of_flight_from_zip,
     read_time_of_flight_from_zip_no_mean,
     smooth_time_of_flight,
+    remote_image_injector,
     crop_image,
     crop_images,
     calculate_molecule_number_from_fluorescent_images,
