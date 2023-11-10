@@ -14,17 +14,7 @@ from .models import (
     GaussianFitWithOffset2D
 )
 from .curve_fitting import (
-    linear,
-    fit_linear,
-    gaussian_with_offset,
     fit_gaussian_with_offset,
-    gaussian_without_offset,
-    fit_gaussian_without_offset,
-    exponential_without_offset,
-    fit_exponential_without_offset,
-    exponential_with_offset,
-    fit_exponential_with_offset,
-    gaussian_with_offset_2D,
     fit_gaussian_with_offset_2D
 )
 
