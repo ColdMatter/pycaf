@@ -423,7 +423,7 @@ def calculate_molecule_number_from_fluorescent_images(
     eta_q: float
 ) -> np.ndarray:
     count = np.sum(images, axis=(1, 2))
-    photon = (count*full_well_capacity*eta_q)/(2**bits_per_channel-1)
+    photon = (count*full_well_capacity)/((2**bits_per_channel-1)*eta_q)
     number = photon/(exposure_time*gamma*collection_solid_angle)
     return number
 

@@ -1,10 +1,12 @@
 # Ignore bin, libs folder
 bin
 libs
+__pycache__
 *.egg-info
 
 # Ignore all so files
 *.so
 *.pyc
+*.*.pyc
 # Ignore all json files
 *.json
