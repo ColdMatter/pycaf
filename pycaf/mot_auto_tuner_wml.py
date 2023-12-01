@@ -167,7 +167,7 @@ class MOTAutoTunerWML():
                         width=1.0,
                         fc='r', ec='r')
                     text = f"{laser} set " + \
-                        "@ {getattr(self, f'{laser}_setpoint')} THz"
+                        f"@ {getattr(self, f'{laser}_setpoint')} THz"
                     named_ax[laser].set_title(text)
             else:
                 named_ax[laser].set_title(f"{laser} not scanned")
