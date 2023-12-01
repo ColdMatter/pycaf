@@ -39,6 +39,13 @@ class Experiment():
         clr.AddReference(path)
         return None
 
+    def __setattr__(
+        self,
+        __name: str,
+        __value: Any
+    ) -> None:
+        self.__dict__[__name] = __value
+
     def connect(
         self
     ) -> None:
@@ -99,23 +106,60 @@ class Experiment():
                 except Exception as e:
                     print(f"Error: {e} encountered")
             elif key == "picomotor":
-                if path_info["connect"]:
-                    try:
-                        from pylablib.devices import Newport
-                        if Newport.get_usb_devices_number_picomotor() == 1:
-                            self.stage = Newport.Picomotor8742()
-                        elif Newport.get_usb_devices_number_picomotor() == 0:
-                            print("No PicoMotor device detected!")
-                        else:
-                            print("Too many PicoMotor device detected!")
-                    except Exception as e:
-                        print(f"Error: {e} encountered")
+                if "connect" in path_info:
+                    if path_info["connect"]:
+                        self.picomotor_default_axis = None
+                        self.picomotor_default_speed = None
+                        self.picomotor_default_acceleration = None
+                        self.picomotor_default_steps = None
+                        try:
+                            from pylablib.devices import Newport
+                            n = Newport.get_usb_devices_number_picomotor()
+                            if n == 1:
+                                self.stage = Newport.Picomotor8742()
+                                if "default_motor" in path_info:
+                                    self.picomotor_default_motor = \
+                                        path_info["default_motor"]
+                                if "default_speed" in path_info:
+                                    self.picomotor_default_speed = \
+                                        path_info["default_speed"]
+                                if "default_aceeleration" in path_info:
+                                    self.picomotor_default_acceleration = \
+                                        path_info["default_acceleration"]
+                                if "default_steps" in path_info:
+                                    self.picomotor_default_steps = \
+                                        path_info["default_steps"]
+                            elif n == 0:
+                                print("No PicoMotor device detected!")
+                            else:
+                                print("Too many PicoMotor device detected!")
+                        except Exception as e:
+                            print(f"Error: {e} encountered")
         return None
 
     def disconnect(
         self
     ) -> None:
         self.stage.close()
+        return None
+
+    def _move_picomotor_with_default_settings(
+        self
+    ) -> None:
+        if (self.picomotor_default_speed is not None) and \
+                (self.picomotor_default_acceleration is not None):
+            self.stage.setup_velocity(
+                speed=self.picomotor_default_speed,
+                accel=self.picomotor_default_acceleration
+            )
+        if (self.picomotor_default_axis is not None) and \
+                (self.picomotor_default_steps is not None):
+            motor: str = self.picomotor_default_motor
+            self.stage.move_by(
+                axis=self.config["picomotor"]["motor_to_axis"][motor],
+                steps=self.picomotor_default_steps
+            )
+            self.stage.wait_move()
         return None
 
     def get_laser_set_points_tcl(
@@ -154,6 +198,7 @@ class Experiment():
         script: str,
         parameter: str,
         values: List[Union[int, float]],
+        move_yag_spot: bool = False,
         callback: Callable = None
     ) -> List[Any]:
         _dictionary = Dictionary[String, Object]()
@@ -163,6 +208,8 @@ class Experiment():
             self.motmaster.SetScriptPath(path)
             for i in track(range(len(values))):
                 _dictionary[parameter] = values[i]
+                if move_yag_spot:
+                    self._move_picomotor_with_default_settings()
                 self.motmaster.Go(_dictionary)
                 time.sleep(self.interval)
                 if callback is not None:
@@ -176,26 +223,35 @@ class Experiment():
         self,
         script: str,
         parameters: List[str],
-        values: List[Tuple[Any]]
-    ) -> None:
+        values: List[Tuple[Any]],
+        move_yag_spot: bool = False,
+        callback: Callable = None
+    ) -> List[Any]:
         _dictionary = Dictionary[String, Object]()
         path = str(self.root.joinpath(f"{script}.cs"))
+        results = []
         try:
             self.motmaster.SetScriptPath(path)
             for i in track(range(len(values))):
+                if move_yag_spot:
+                    self._move_picomotor_with_default_settings()
                 for k, parameter in enumerate(parameters):
                     _dictionary[parameter] = values[i][k]
                 self.motmaster.Go(_dictionary)
                 time.sleep(self.interval)
+                if callback is not None:
+                    result = callback(values[i])
+                    results.append(result)
         except Exception as e:
             print(f"Error: {e} encountered")
-        return None
+        return results
 
     def scan_tcl_laser_set_points(
         self,
         script: str,
         laser: str,
         values: List[Union[int, float]],
+        move_yag_spot: bool = False,
         callback: Callable = None,
         motmaster_parameter: str = None,
         motmaster_value: Union[int, float] = None
@@ -209,6 +265,8 @@ class Experiment():
         results = []
         try:
             self.motmaster.SetScriptPath(path)
+            if move_yag_spot:
+                self._move_picomotor_with_default_settings()
             if (motmaster_parameter and motmaster_value) is not None:
                 _dictionary[motmaster_parameter] = motmaster_value
             while current_set_point > values[0]:
@@ -241,6 +299,7 @@ class Experiment():
         script: str,
         laser: str,
         values: List[Union[int, float]],
+        move_yag_spot: bool = False,
         callback: Callable = None,
         motmaster_parameter: str = None,
         motmaster_value: Union[int, float] = None
@@ -253,6 +312,8 @@ class Experiment():
         results = []
         try:
             self.motmaster.SetScriptPath(path)
+            if move_yag_spot:
+                self._move_picomotor_with_default_settings()
             if (motmaster_parameter and motmaster_value) is not None:
                 _dictionary[motmaster_parameter] = motmaster_value
             while current_set_point > values[0]:
@@ -285,6 +346,7 @@ class Experiment():
         script: str,
         laser: str,
         values: List[Union[int, float]],
+        move_yag_spot: bool = False,
         callback: Callable = None,
         motmaster_parameter: str = None,
         motmaster_values: List[Union[int, float]] = None
@@ -313,6 +375,8 @@ class Experiment():
                 self.wavemeter_lock.setSlaveFrequency(
                     laser, values[i]
                 )
+                if move_yag_spot:
+                    self._move_picomotor_with_default_settings()
                 if (motmaster_parameter and motmaster_values) is not None:
                     for k in range(len(motmaster_values)):
                         _dictionary[motmaster_parameter] = motmaster_values[k]
@@ -336,6 +400,7 @@ class Experiment():
         script: str,
         laser: str,
         values: List[Union[int, float]],
+        move_yag_spot: bool = False,
         callback: Callable = None,
         motmaster_parameters: List[str] = None,
         motmaster_values: List[Tuple[Union[int, float]]] = None
@@ -364,6 +429,8 @@ class Experiment():
                 self.wavemeter_lock.setSlaveFrequency(
                     laser, values[i]
                 )
+                if move_yag_spot:
+                    self._move_picomotor_with_default_settings()
                 if (motmaster_parameters and motmaster_values) is not None:
                     for k in range(len(motmaster_values)):
                         motmaster_value: Tuple = motmaster_values[k]
@@ -402,32 +469,12 @@ class Experiment():
             print(f"Error: {e} encountered")
         return None
 
-    def scan_motmaster_parameters_with_alternating_parameter(
-        self,
-        script: str,
-        parameter: str,
-        values: List[Union[int, float]],
-        alternating_parameter: str,
-        alternating_value: List[Union[int, float]]
-    ) -> None:
-        return None
-
-    def scan_laser_set_points_with_alternating_parameter(
-        self,
-        script: str,
-        cavity: str,
-        laser: str,
-        values: List[Union[int, float]],
-        alternating_parameter: str,
-        alternating_value: List[Union[int, float]]
-    ) -> None:
-        return None
-
     def scan_microwave_amplitude(
         self,
         script: str,
         synthesizer: str = "Gigatronics Synthesizer 2",
-        values: List[float] = []
+        values: List[float] = [],
+        move_yag_spot: bool = False
     ) -> None:
         path = str(self.root.joinpath(f"{script}.cs"))
         try:
@@ -436,6 +483,8 @@ class Experiment():
                 self.hardware_controller.tabs[synthesizer].SetAmplitude(
                     values[i]
                 )
+                if move_yag_spot:
+                    self._move_picomotor_with_default_settings()
                 self.motmaster.Go()
                 time.sleep(self.interval)
         except Exception as e:
@@ -446,7 +495,8 @@ class Experiment():
         self,
         script: str,
         synthesizer: str = "Gigatronics Synthesizer 2",
-        values: List[float] = []
+        values: List[float] = [],
+        move_yag_spot: bool = False
     ) -> None:
         path = str(self.root.joinpath(f"{script}.cs"))
         try:
@@ -455,6 +505,8 @@ class Experiment():
                 self.hardware_controller.tabs[synthesizer].SetFrequency(
                     values[i]
                 )
+                if move_yag_spot:
+                    self._move_picomotor_with_default_settings()
                 self.motmaster.Go()
                 time.sleep(self.interval)
         except Exception as e:
@@ -484,49 +536,6 @@ class Experiment():
             n_steps: int = int(total_steps/abs(interval_steps))
             for step_index in track(range(n_steps)):
                 self.stage.move_by(axis=axis, steps=interval_steps)
-                self.stage.wait_move()
-                if (motmaster_parameter and motmaster_values) is not None:
-                    for k in range(len(motmaster_values)):
-                        _dictionary[motmaster_parameter] = motmaster_values[k]
-                        self.motmaster.Go(_dictionary)
-                        time.sleep(self.interval)
-                        if callback is not None:
-                            result = callback(step_index)
-                            results.append(result)
-                else:
-                    self.motmaster.Go()
-                    time.sleep(self.interval)
-                    if callback is not None:
-                        result = callback(step_index)
-                        results.append(result)
-        except Exception as e:
-            print(f"Error: {e} encountered")
-        return results
-
-    def scan_picomotor_steps_with_walking(
-        self,
-        script: str,
-        motors: Tuple[str, str],
-        interval_steps: Tuple[int, int],
-        total_steps: int,
-        speed: int = None,
-        accel: int = None,
-        callback: Callable = None,
-        motmaster_parameter: str = None,
-        motmaster_values: List[Tuple[Union[int, float]]] = None
-    ) -> List[Any]:
-        path = str(self.root.joinpath(f"{script}.cs"))
-        _dictionary = Dictionary[String, Object]()
-        try:
-            self.motmaster.SetScriptPath(path)
-            results = []
-            if (speed and accel) is not None:
-                self.stage.setup_velocity(speed=speed, accel=accel)
-            n_steps: int = int(total_steps/abs(interval_steps))
-            for step_index in track(range(n_steps)):
-                for motor, interval_step in zip(motors, interval_steps):
-                    axis = self.config["picomotor"]["motor_to_axis"][motor]
-                    self.stage.move_by(axis=axis, steps=interval_step)
                 self.stage.wait_move()
                 if (motmaster_parameter and motmaster_values) is not None:
                     for k in range(len(motmaster_values)):
