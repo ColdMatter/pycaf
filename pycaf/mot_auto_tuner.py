@@ -63,6 +63,7 @@ class MOTAutoTuner():
             self.script,
             self.field_parameter,
             [self.bg_field_value],
+            False,
             self.fl_number_detector
         )
         images_bg = np.mean(results[0][1], axis=0)
@@ -74,6 +75,7 @@ class MOTAutoTuner():
                         self.script,
                         laser,
                         getattr(self, f"{laser}_scan_range"),
+                        False,
                         self.fl_number_detector,
                         self.field_parameter,
                         self.mot_field_value
@@ -93,6 +95,7 @@ class MOTAutoTuner():
                         self.script,
                         laser,
                         [set_point],
+                        False,
                         self.fl_number_detector,
                         self.field_parameter,
                         self.mot_field_value

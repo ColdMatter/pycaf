@@ -112,23 +112,28 @@ class Experiment():
                         self.picomotor_default_speed = None
                         self.picomotor_default_acceleration = None
                         self.picomotor_default_steps = None
+                        self.picomotor_default_max_steps = None
+                        self.picomotor_steps_moved = 0
                         try:
                             from pylablib.devices import Newport
                             n = Newport.get_usb_devices_number_picomotor()
                             if n == 1:
                                 self.stage = Newport.Picomotor8742()
-                                if "default_motor" in path_info:
+                                if "motor" in path_info["default"]:
                                     self.picomotor_default_motor = \
-                                        path_info["default_motor"]
-                                if "default_speed" in path_info:
+                                        path_info["default"]["motor"]
+                                if "speed" in path_info["default"]:
                                     self.picomotor_default_speed = \
-                                        path_info["default_speed"]
-                                if "default_aceeleration" in path_info:
+                                        path_info["default"]["speed"]
+                                if "aceeleration" in path_info["default"]:
                                     self.picomotor_default_acceleration = \
-                                        path_info["default_acceleration"]
-                                if "default_steps" in path_info:
+                                        path_info["default"]["acceleration"]
+                                if "steps" in path_info["default"]:
                                     self.picomotor_default_steps = \
-                                        path_info["default_steps"]
+                                        path_info["default"]["steps"]
+                                if "max_steps" in path_info["default"]:
+                                    self.picomotor_default_max_steps = \
+                                        path_info["default"]["max_steps"]
                             elif n == 0:
                                 print("No PicoMotor device detected!")
                             else:
@@ -160,6 +165,10 @@ class Experiment():
                 steps=self.picomotor_default_steps
             )
             self.stage.wait_move()
+            self.picomotor_steps_moved += abs(self.picomotor_default_steps)
+            if self.picomotor_steps_moved >= \
+                    self.picomotor_default_max_steps:
+                self.picomotor_default_steps *= -1.0
         return None
 
     def get_laser_set_points_tcl(
