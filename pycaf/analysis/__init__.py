@@ -10,7 +10,9 @@ from .curve_fitting import (
     gaussian_with_offset_2D,
     fit_gaussian_with_offset_2D,
     gaussian_without_offset_2D,
-    fit_gaussian_without_offset_2D
+    fit_gaussian_without_offset_2D,
+    linear,
+    fit_linear
 )
 from .models import (
     Pattern,

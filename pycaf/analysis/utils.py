@@ -145,7 +145,8 @@ def extract_pattern_from_json_string(
 
 
 def read_digital_patterns_from_zip(
-    archive: ZipFile
+    archive: ZipFile,
+    close: bool = True
 ) -> Dict[str, Pattern]:
     parameters = read_parameters_from_zip(archive)
     full_time = parameters["PatternLength"]
@@ -192,14 +193,16 @@ def read_digital_patterns_from_zip(
                             time=filled_timings,
                             event=filled_patterns
                         )
-    archive.close()
+    if close:
+        archive.close()
     return channels
 
 
 def read_analog_patterns_from_zip(
-    archive: ZipFile
+    archive: ZipFile,
+    close: bool = True
 ) -> Dict[str, Pattern]:
-    parameters = read_parameters_from_zip(archive)
+    parameters = read_parameters_from_zip(archive, False)
     full_time = parameters["PatternLength"]
     offset = int(parameters["TCLBlockStart"])
     reader = {}
@@ -241,12 +244,14 @@ def read_analog_patterns_from_zip(
             time=filled_timings,
             event=filled_voltages
         )
-    archive.close()
+    if close:
+        archive.close()
     return channels
 
 
 def read_images_from_zip(
-    archive: ZipFile
+    archive: ZipFile,
+    close: bool = True
 ) -> List[np.ndarray]:
     images = []
     filenames = archive.namelist()
@@ -260,12 +265,14 @@ def read_images_from_zip(
                         dtype=float
                     )
                 )
-    archive.close()
+    if close:
+        archive.close()
     return np.array(images)
 
 
 def read_parameters_from_zip(
-    archive: ZipFile
+    archive: ZipFile,
+    close: bool = True
 ) -> Dict[str, Any]:
     parameters = {}
     for filename in archive.namelist():
@@ -282,12 +289,14 @@ def read_parameters_from_zip(
                     name, value, _ = line.split(b"\t")
                     if value.isdigit():
                         parameters[name.decode("utf-8")] = float(value)
-    archive.close()
+    if close:
+        archive.close()
     return parameters
 
 
 def read_time_of_flight_from_zip(
-    archive: ZipFile
+    archive: ZipFile,
+    close: bool = True
 ) -> Tuple[int, np.ndarray]:
     tofs = []
     sampling_rate: int = 0
@@ -303,12 +312,14 @@ def read_time_of_flight_from_zip(
                 )
     if len(tofs) > 1:
         tofs = np.array(tofs, dtype=float).mean(axis=0)
-    archive.close()
+    if close:
+        archive.close()
     return sampling_rate, tofs
 
 
 def read_time_of_flight_from_zip_no_mean(
-    archive: ZipFile
+    archive: ZipFile,
+    close: bool = True
 ) -> Tuple[int, np.ndarray]:
     tofs = []
     sampling_rate: int = 0
@@ -324,7 +335,8 @@ def read_time_of_flight_from_zip_no_mean(
                 )
     if len(tofs) > 1:
         tofs = np.array(tofs, dtype=float)
-    archive.close()
+    if close:
+        archive.close()
     return sampling_rate, tofs
 
 

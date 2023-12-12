@@ -119,21 +119,21 @@ class Experiment():
                             n = Newport.get_usb_devices_number_picomotor()
                             if n == 1:
                                 self.stage = Newport.Picomotor8742()
-                                if "motor" in path_info["default"]:
+                                if "motor" in path_info["defaults"]:
                                     self.picomotor_default_motor = \
-                                        path_info["default"]["motor"]
-                                if "speed" in path_info["default"]:
+                                        path_info["defaults"]["motor"]
+                                if "speed" in path_info["defaults"]:
                                     self.picomotor_default_speed = \
-                                        path_info["default"]["speed"]
-                                if "aceeleration" in path_info["default"]:
+                                        path_info["defaults"]["speed"]
+                                if "aceeleration" in path_info["defaults"]:
                                     self.picomotor_default_acceleration = \
-                                        path_info["default"]["acceleration"]
-                                if "steps" in path_info["default"]:
+                                        path_info["defaults"]["acceleration"]
+                                if "steps" in path_info["defaults"]:
                                     self.picomotor_default_steps = \
-                                        path_info["default"]["steps"]
-                                if "max_steps" in path_info["default"]:
+                                        path_info["defaults"]["steps"]
+                                if "max_steps" in path_info["defaults"]:
                                     self.picomotor_default_max_steps = \
-                                        path_info["default"]["max_steps"]
+                                        path_info["defaults"]["max_steps"]
                             elif n == 0:
                                 print("No PicoMotor device detected!")
                             else:
