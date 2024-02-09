@@ -10,3 +10,5 @@ __pycache__
 *.*.pyc
 # Ignore all json files
 *.json
+*.pyc
+pycaf/__pycache__/__init__.cpython-39.pyc

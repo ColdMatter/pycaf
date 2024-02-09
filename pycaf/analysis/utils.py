@@ -252,7 +252,7 @@ def read_analog_patterns_from_zip(
 def read_images_from_zip(
     archive: ZipFile,
     close: bool = True
-) -> List[np.ndarray]:
+) -> np.ndarray:
     images = []
     filenames = archive.namelist()
     filenames.sort(key=natural_keys)
@@ -423,6 +423,18 @@ def crop_images(
     vstart = int(centre[1]-width/2)
     vstop = int(centre[1]+width/2)
     return images[:, hstart:hstop, vstart:vstop]
+
+
+def bin_image(
+    image: np.ndarray,
+    h_bin: int = 2,
+    v_bin: int = 2
+) -> np.ndarray:
+    _img = 0
+    for i in range(v_bin):
+        for j in range(h_bin):
+            _img += image[i::v_bin, j::h_bin]
+    return _img
 
 
 def calculate_molecule_number_from_fluorescent_images(

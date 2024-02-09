@@ -26,7 +26,7 @@ def gaussian_with_offset(
 def fit_gaussian_with_offset(
     x: np.ndarray,
     y: np.ndarray,
-    err: np.ndarray = np.array([]),
+    err: np.ndarray = None,
     n_fine: int = 100
 ) -> GaussianFitWithOffset:
     loc_trial = np.argmax(y)
@@ -36,7 +36,7 @@ def fit_gaussian_with_offset(
     halfmax_y = np.max(y)/2.0
     s_trial = np.abs(x[0]-x[1])*len(y[y > halfmax_y])/2.0
     p0 = [a_trial, c_trial, s_trial, o_trial]
-    popt, _ = curve_fit(gaussian_with_offset, x, y, p0=p0)
+    popt, _ = curve_fit(gaussian_with_offset, x, y, p0=p0, sigma=err)
     x_fine = np.linspace(np.min(x), np.max(x), n_fine)
     y_fine = gaussian_with_offset(x_fine, *popt)
     fit = GaussianFitWithOffset(
@@ -65,7 +65,7 @@ def gaussian_without_offset(
 def fit_gaussian_without_offset(
     x: np.ndarray,
     y: np.ndarray,
-    err: np.ndarray = np.array([]),
+    err: np.ndarray = None,
     n_fine: int = 100
 ) -> GaussianFitWithoutOffset:
     loc_trial = np.argmax(y)
@@ -74,7 +74,7 @@ def fit_gaussian_without_offset(
     halfmax_y = np.max(y)/2.0
     w_trial = np.abs(x[0]-x[1])*len(y[y > halfmax_y])/2.0
     p0 = [a_trial, c_trial, w_trial]
-    popt, _ = curve_fit(gaussian_without_offset, x, y, p0=p0)
+    popt, _ = curve_fit(gaussian_without_offset, x, y, p0=p0, sigma=err)
     x_fine = np.linspace(np.min(x), np.max(x), n_fine)
     y_fine = gaussian_without_offset(x_fine, *popt)
     fit = GaussianFitWithoutOffset(
@@ -215,13 +215,13 @@ def linear(
 def fit_linear(
     x: np.ndarray,
     y: np.ndarray,
-    err: np.ndarray = np.array([]),
+    err: np.ndarray = None,
     n_fine: int = 100
 ) -> LinearFit:
     s_trial = (y[-1]-y[0])/(x[-1]-x[0])
     i_trial = np.max(y) if s_trial < 0 else np.min(y)
     p0 = [s_trial, i_trial]
-    popt, _ = curve_fit(linear, x, y, p0=p0)
+    popt, _ = curve_fit(linear, x, y, p0=p0, sigma=err)
     x_fine = np.linspace(np.min(x), np.max(x), n_fine)
     y_fine = linear(x_fine, *popt)
     fit = LinearFit(
@@ -248,14 +248,14 @@ def exponential_without_offset(
 def fit_exponential_without_offset(
     x: np.ndarray,
     y: np.ndarray,
-    err: np.ndarray = np.array([]),
+    err: np.ndarray = None,
     n_fine: int = 100
 ) -> ExponentialFitWithoutOffset:
     a_trial = np.max(y)
     c_trial = x[np.argmax(y)]
     r_trial = np.nanmean((c_trial-x)/np.log(y/a_trial))
     p0 = [a_trial, c_trial, r_trial]
-    popt, _ = curve_fit(exponential_without_offset, x, y, p0=p0)
+    popt, _ = curve_fit(exponential_without_offset, x, y, p0=p0, sigma=err)
     x_fine = np.linspace(np.min(x), np.max(x), n_fine)
     y_fine = exponential_without_offset(x_fine, *popt)
     fit = ExponentialFitWithoutOffset(
@@ -284,7 +284,7 @@ def exponential_with_offset(
 def fit_exponential_with_offset(
     x: np.ndarray,
     y: np.ndarray,
-    err: np.ndarray = np.array([]),
+    err: np.ndarray = None,
     n_fine: int = 100
 ) -> ExponentialFitWithOffset:
     a_trial = np.max(y)
@@ -292,7 +292,7 @@ def fit_exponential_with_offset(
     r_trial = np.nanmean((c_trial-x)/np.log(y/a_trial))
     o_trial = np.min(y)
     p0 = [a_trial, c_trial, r_trial, o_trial]
-    popt, _ = curve_fit(exponential_with_offset, x, y, p0=p0)
+    popt, _ = curve_fit(exponential_with_offset, x, y, p0=p0, sigma=err)
     x_fine = np.linspace(np.min(x), np.max(x), n_fine)
     y_fine = exponential_with_offset(x_fine, *popt)
     fit = ExponentialFitWithOffset(

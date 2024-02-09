@@ -15,7 +15,7 @@ class Pattern(BaseModel):
 class Fit(BaseModel):
     x: np.ndarray = np.array([])
     y: np.ndarray = np.array([])
-    err: np.ndarray = np.array([])
+    err: Union[None, np.ndarray] = None
     x_fine: np.ndarray = np.array([])
     y_fine: np.ndarray = np.array([])
 

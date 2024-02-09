@@ -38,6 +38,7 @@ from .utils import (
     remote_image_injector,
     crop_image,
     crop_images,
+    bin_image,
     calculate_molecule_number_from_fluorescent_images,
     calculate_optical_density_from_absorption_images,
     calculate_atom_number_from_absorption_images,

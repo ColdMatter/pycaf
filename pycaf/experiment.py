@@ -198,7 +198,7 @@ class Experiment():
             )
             lasers[laser] = {"set_point": set_point}
             print(
-                f"{laser}: set_point = {set_point}"
+                f"Frequency of {laser}: {set_point:.6f} THz"
             )
         return lasers
 
@@ -226,6 +226,10 @@ class Experiment():
                     results.append(result)
         except Exception as e:
             print(f"Error: {e} encountered")
+        try:
+            self.get_laser_set_points_wml()
+        except Exception as e:
+            print(f"Error: {e} encountered")
         return results
 
     def scan_motmaster_parameters(
@@ -251,6 +255,10 @@ class Experiment():
                 if callback is not None:
                     result = callback(values[i])
                     results.append(result)
+        except Exception as e:
+            print(f"Error: {e} encountered")
+        try:
+            self.get_laser_set_points_wml()
         except Exception as e:
             print(f"Error: {e} encountered")
         return results
@@ -348,6 +356,10 @@ class Experiment():
                     results.append(result)
         except Exception as e:
             print(f"Error: {e} encountered")
+        try:
+            self.get_laser_set_points_wml()
+        except Exception as e:
+            print(f"Error: {e} encountered")
         return results
 
     def scan_wm_laser_set_points_with_motmaster_values(
@@ -400,6 +412,10 @@ class Experiment():
                     if callback is not None:
                         result = callback(values[i])
                         results.append(result)
+        except Exception as e:
+            print(f"Error: {e} encountered")
+        try:
+            self.get_laser_set_points_wml()
         except Exception as e:
             print(f"Error: {e} encountered")
         return results
@@ -458,6 +474,10 @@ class Experiment():
                         results.append(result)
         except Exception as e:
             print(f"Error: {e} encountered")
+        try:
+            self.get_laser_set_points_wml()
+        except Exception as e:
+            print(f"Error: {e} encountered")
         return results
 
     def motmaster_single_run(
@@ -498,6 +518,10 @@ class Experiment():
                 time.sleep(self.interval)
         except Exception as e:
             print(f"Error: {e} encountered")
+        try:
+            self.get_laser_set_points_wml()
+        except Exception as e:
+            print(f"Error: {e} encountered")
         return None
 
     def scan_microwave_frequency(
@@ -518,6 +542,10 @@ class Experiment():
                     self._move_picomotor_with_default_settings()
                 self.motmaster.Go()
                 time.sleep(self.interval)
+        except Exception as e:
+            print(f"Error: {e} encountered")
+        try:
+            self.get_laser_set_points_wml()
         except Exception as e:
             print(f"Error: {e} encountered")
         return None
@@ -560,6 +588,10 @@ class Experiment():
                     if callback is not None:
                         result = callback(step_index)
                         results.append(result)
+        except Exception as e:
+            print(f"Error: {e} encountered")
+        try:
+            self.get_laser_set_points_wml()
         except Exception as e:
             print(f"Error: {e} encountered")
         return results
