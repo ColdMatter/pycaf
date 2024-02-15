@@ -9,7 +9,9 @@ from .models import (
     ExponentialFitWithOffset,
     ExponentialFitWithoutOffset,
     GaussianFitWithoutOffset2D,
-    GaussianFitWithOffset2D
+    GaussianFitWithOffset2D,
+    LorentzianFitWithOffset,
+    LorentzianFitWithoutOffset
 )
 
 
@@ -40,6 +42,7 @@ def fit_gaussian_with_offset(
     x_fine = np.linspace(np.min(x), np.max(x), n_fine)
     y_fine = gaussian_with_offset(x_fine, *popt)
     fit = GaussianFitWithOffset(
+        func="a*exp(-(x-c)**2/(2*s**2))+o",
         x=x,
         y=y,
         err=err,
@@ -78,6 +81,7 @@ def fit_gaussian_without_offset(
     x_fine = np.linspace(np.min(x), np.max(x), n_fine)
     y_fine = gaussian_without_offset(x_fine, *popt)
     fit = GaussianFitWithoutOffset(
+        func="a*exp(-(x-c)**2/(2*s**2))",
         x=x,
         y=y,
         err=err,
@@ -135,6 +139,7 @@ def fit_gaussian_without_offset_2D(
     ]
     popt, _ = curve_fit(gaussian_without_offset_2D, (mx, my), data, p0=p0)
     fit = GaussianFitWithoutOffset2D(
+        func="a*exp(-((x-xc)**2/(2*xs**2)+(y-yc)**2/(2*ys**2)))",
         amplitude=popt[0],
         centre=popt[1],
         width=popt[2],
@@ -193,6 +198,7 @@ def fit_gaussian_with_offset_2D(
     ]
     popt, _ = curve_fit(gaussian_with_offset_2D, (mx, my), data, p0=p0)
     fit = GaussianFitWithOffset2D(
+        func="a*exp(-((x-xc)**2/(2*xs**2)+(y-yc)**2/(2*ys**2)))+o",
         amplitude=popt[0],
         centre=popt[1],
         width=popt[2],
@@ -225,6 +231,7 @@ def fit_linear(
     x_fine = np.linspace(np.min(x), np.max(x), n_fine)
     y_fine = linear(x_fine, *popt)
     fit = LinearFit(
+        func="slope*x+intercept",
         x=x,
         y=y,
         err=err,
@@ -259,6 +266,7 @@ def fit_exponential_without_offset(
     x_fine = np.linspace(np.min(x), np.max(x), n_fine)
     y_fine = exponential_without_offset(x_fine, *popt)
     fit = ExponentialFitWithoutOffset(
+        func="a*exp(-(x-c)/r)",
         x=x,
         y=y,
         err=err,
@@ -296,6 +304,7 @@ def fit_exponential_with_offset(
     x_fine = np.linspace(np.min(x), np.max(x), n_fine)
     y_fine = exponential_with_offset(x_fine, *popt)
     fit = ExponentialFitWithOffset(
+        func="a*exp(-(x-c)/r)+o",
         x=x,
         y=y,
         err=err,
@@ -304,6 +313,81 @@ def fit_exponential_with_offset(
         amplitude=popt[0],
         centre=popt[1],
         rate=popt[2],
+        offset=popt[3]
+    )
+    return fit
+
+
+def lorentzian_without_offset(
+    x: float,
+    amplitude: float,
+    centre: float,
+    width: float
+) -> float:
+    return amplitude*(0.5*width**2)/((x-centre)**2+(0.5*width**2))
+
+
+def fit_lorentzian_without_offset(
+    x: np.ndarray,
+    y: np.ndarray,
+    err: np.ndarray = None,
+    n_fine: int = 100
+) -> LorentzianFitWithoutOffset:
+    a_trial = np.max(y)
+    c_trial = x[np.argmax(y)]
+    r_trial = np.nanmean(x/(np.sqrt(a_trial/y-1)))
+    p0 = [a_trial, c_trial, r_trial]
+    popt, _ = curve_fit(lorentzian_without_offset, x, y, p0=p0, sigma=err)
+    x_fine = np.linspace(np.min(x), np.max(x), n_fine)
+    y_fine = lorentzian_without_offset(x_fine, *popt)
+    fit = LorentzianFitWithoutOffset(
+        func="a*(0.5*w**2/((x-c)**2+(0.5*w**2)))",
+        x=x,
+        y=y,
+        err=err,
+        x_fine=x_fine,
+        y_fine=y_fine,
+        amplitude=popt[0],
+        centre=popt[1],
+        width=popt[2]
+    )
+    return fit
+
+
+def lorentzian_with_offset(
+    x: float,
+    amplitude: float,
+    centre: float,
+    width: float,
+    offset: float
+) -> float:
+    return amplitude*(0.5*width**2)/((x-centre)**2+(0.5*width**2))+offset
+
+
+def fit_lorentzian_with_offset(
+    x: np.ndarray,
+    y: np.ndarray,
+    err: np.ndarray = None,
+    n_fine: int = 100
+) -> LorentzianFitWithOffset:
+    a_trial = np.max(y)
+    c_trial = x[np.argmax(y)]
+    o_trial = np.min(y)
+    r_trial = np.nanmean(x/(np.sqrt(a_trial/(y-o_trial)-1)))
+    p0 = [a_trial, c_trial, r_trial, o_trial]
+    popt, _ = curve_fit(lorentzian_with_offset, x, y, p0=p0, sigma=err)
+    x_fine = np.linspace(np.min(x), np.max(x), n_fine)
+    y_fine = lorentzian_with_offset(x_fine, *popt)
+    fit = LorentzianFitWithOffset(
+        func="a*(0.5*w**2/((x-c)**2+(0.5*w**2)))+o",
+        x=x,
+        y=y,
+        err=err,
+        x_fine=x_fine,
+        y_fine=y_fine,
+        amplitude=popt[0],
+        centre=popt[1],
+        width=popt[2],
         offset=popt[3]
     )
     return fit

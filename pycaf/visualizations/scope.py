@@ -16,9 +16,22 @@ from ..analysis import (
     fit_exponential_without_offset,
     fit_exponential_with_offset,
     fit_gaussian_with_offset,
-    gaussian_with_offset,
-    fit_gaussian_without_offset
+    fit_gaussian_without_offset,
+    fit_lorentzian_with_offset,
+    fit_lorentzian_without_offset
 )
+
+
+fitting_func_map = \
+    {
+        "linear": fit_linear,
+        "exponential_without_offset": fit_exponential_without_offset,
+        "exponential_with_offset": fit_exponential_with_offset,
+        "gaussian_without_offset": fit_gaussian_without_offset,
+        "gaussian_with_offset": fit_gaussian_with_offset,
+        "lorentzian_with_offset": fit_lorentzian_with_offset,
+        "lorentzian_without_offset": fit_lorentzian_without_offset
+    }
 
 
 class Scope():
@@ -43,6 +56,65 @@ class Scope():
         self.year = year
         self.month = month
         self.day = day
+
+    def _1D_plot(
+        self,
+        x: np.ndarray,
+        y_mean: np.ndarray,
+        y_err: np.ndarray = None,
+        fit: Fit = None,
+        **kwargs
+    ) -> Tuple[plt.Figure, plt.Axes]:
+        if "figsize" in kwargs:
+            figsize = kwargs["figsize"]
+        else:
+            figsize = (8, 5)
+        fig, ax = plt.subplots(1, 1, figsize=figsize)
+        if "fmt" in kwargs:
+            fmt = kwargs["fmt"]
+        else:
+            fmt = "ok"
+        if "label" in kwargs:
+            label = kwargs["label"]
+        else:
+            label = None
+        if y_err is not None:
+            ax.errorbar(
+                x,
+                y_mean,
+                yerr=y_err,
+                fmt=fmt,
+                label=label
+            )
+        else:
+            ax.plot(x, y_mean, fmt, label=label)
+        if fit:
+            ax.plot(fit.x_fine, fit.y_fine, "-r", label="Fit")
+            
+        if "xlabel" in kwargs:
+            ax.set_xlabel(kwargs["xlabel"])
+        if "ylabel" in kwargs:
+            ax.set_ylabel(kwargs["ylabel"])
+        if "title" in kwargs:
+            ax.set_title(kwargs["title"])
+        ax.legend()
+        return fig, ax
+
+    def _1D_fit(
+        self,
+        fitting: str,
+        x: np.ndarray,
+        y_mean: np.ndarray,
+        y_err: np.ndarray,
+    ) -> Fit:
+        fit = None
+        if fitting in fitting_func_map:
+            fit = fitting_func_map[fitting](
+                    x,
+                    y_mean,
+                    y_err
+                )
+        return fit
 
     def multishot_altfile_background(
         self,
@@ -115,10 +187,10 @@ class Scope():
         h_fit = fit_gaussian_with_offset(y, h_profile)
         v_fit = fit_gaussian_with_offset(x, v_profile)
 
-        width_ax0 = 4.
-        width_ax1 = 1.
-        height_ax2 = 1.
-        width_ax3 = 5.
+        width_ax0 = 4.0
+        width_ax1 = 1.0
+        height_ax2 = 1.0
+        width_ax3 = 5.0
         height_ax0 = width_ax0 * ratio
 
         left_margin = 0.65
@@ -167,10 +239,14 @@ class Scope():
                 width_ax3 / fwidth, height_ax0 / fheight
             ]
         )
-        ax4 = fig.add_axes([(left_margin + width_ax0 + inter_margin) / fwidth,
-                            (bottom_margin) / fheight,
-                            (width_ax1 + width_ax3 + 4*inter_margin) / fwidth,
-                            (height_ax2 - 6*inter_margin) / fheight])
+        ax4 = fig.add_axes(
+            [
+                (left_margin + width_ax0 + inter_margin) / fwidth,
+                (bottom_margin) / fheight,
+                (width_ax1 + width_ax3 + 4*inter_margin) / fwidth,
+                (height_ax2 - 6*inter_margin) / fheight
+            ]
+        )
 
         bounds = [x.min(), x.max(), y.min(), y.max()]
         _img = ax0.imshow(img, extent=bounds, origin='lower')
@@ -194,13 +270,7 @@ class Scope():
         ax0.set_ylabel("Distance [mm]")
         ax1.plot(v_profile, x, ".")
         ax1.plot(
-            gaussian_with_offset(
-                v_fit.x_fine,
-                v_fit.amplitude,
-                v_fit.centre,
-                v_fit.width,
-                v_fit.offset
-            ),
+            v_fit.y_fine,
             v_fit.x_fine,
             "-r", label=f"{v_fit.width:.2f} mm"
         )
@@ -210,13 +280,8 @@ class Scope():
         ax2.plot(y, h_profile, ".")
         ax2.plot(
             h_fit.x_fine,
-            gaussian_with_offset(
-                h_fit.x_fine,
-                h_fit.amplitude,
-                h_fit.centre,
-                h_fit.width,
-                h_fit.offset
-            ), "-r", label=f"{h_fit.width:.2f} mm"
+            h_fit.y_fine,
+            "-r", label=f"{h_fit.width:.2f} mm"
         )
         ax2.set_xlabel("Distance [mm]")
         ax2.legend()
@@ -228,6 +293,69 @@ class Scope():
         plt.show(block=False)
         return fig, (ax0, ax1, ax2, ax3, ax4)
 
+    def multishot_altfile_background_tof(
+        self,
+        file_start: int,
+        file_stop: int,
+        bin_start: int = 0,
+        bin_stop: int = -1,
+        **kwargs
+    ) -> Tuple[plt.Figure, plt.Axes, np.ndarray]:
+        tofs = []
+        for fileno in range(file_start, file_stop+1, 2):
+            sr, tof_yag_on = read_time_of_flight_from_zip(
+                get_zip_archive(
+                    self.rootpath, self.year, self.month, self.day,
+                    fileno, self.prefix
+                )
+            )
+            _, tof_yag_off = read_time_of_flight_from_zip(
+                get_zip_archive(
+                    self.rootpath, self.year, self.month, self.day,
+                    fileno+1, self.prefix
+                )
+            )
+            _tof = tof_yag_on-tof_yag_off
+            tofs.append(_tof)
+        tofs = np.array(tofs)
+        tofs_max = np.max(tofs, axis=0)
+        tofs_min = np.min(tofs, axis=0)
+        tofs = tofs.mean(axis=0)
+        int_val = np.sum(tofs[bin_start: bin_stop])
+        t = np.arange(0, 1000, 1)*(1000.0/sr)
+
+        fig, ax = self._1D_plot(
+            t, y_mean=tofs,
+            label=f"Sum(Bin region): {int_val:.2f}",
+            **kwargs
+        )
+        if "show_variation" in kwargs:
+            if kwargs["show_variation"]:
+                ax.fill_between(
+                    t,
+                    tofs_min,
+                    tofs_max,
+                    alpha=0.1,
+                    color="k"
+                )
+        if "show_bin" in kwargs:
+            if kwargs["show_bin"]:
+                if "facecolor" in kwargs:
+                    fc = kwargs["facecolor"]
+                else:
+                    fc = "blue"
+                if "alpha" in kwargs:
+                    alpha = kwargs["alpha"]
+                else:
+                    alpha = 0.2
+                ax.fill_between(
+                    t[bin_start: bin_stop],
+                    tofs[bin_start: bin_stop],
+                    alpha=alpha,
+                    color=fc
+                )
+        return fig, ax, tofs
+
     def multishot_altfile_background_parameter_variation_with_image(
         self,
         file_start: int,
@@ -238,12 +366,9 @@ class Scope():
         col_start: int,
         col_end: int,
         fitting: str = None,
-        param_scale_factor: float = 1.0,
-        param_label: str = None,
         param_index_fit_exclude: List = [],
         **kwargs
     ) -> Tuple[plt.Figure, plt.Axes, Fit, np.ndarray]:
-        param_label = parameter if param_label is None else param_label
         _all_params = read_parameters_from_zip(
             get_zip_archive(
                 self.rootpath, self.year, self.month, self.day,
@@ -290,7 +415,15 @@ class Scope():
                 break
         assert (file_stop+1-file_start) % len_of_params == 0
 
-        params = np.array(params[:len_of_params])*param_scale_factor
+        if "xscale" in kwargs:
+            xscale = kwargs["xscale"]
+        else:
+            xscale = 1.0
+        if "xoffset" in kwargs:
+            xoffset = kwargs["xoffset"]
+        else:
+            xoffset = 0.0
+        params = np.array(params[:len_of_params])*xscale-xoffset
         rep = int((file_stop+1-file_start) / (2*len_of_params))
         n = np.array(n).reshape((rep, len_of_params))
         n_mean = np.mean(n, axis=0)
@@ -302,64 +435,17 @@ class Scope():
         n_mean_excluded = np.delete(n_mean, param_index_fit_exclude)
         n_err_excluded = np.delete(n_err, param_index_fit_exclude)
 
-        fit = None
-        if fitting == "exponential_without_offset":
-            fit = fit_exponential_without_offset(
-                params_excluded,
-                n_mean_excluded,
-                n_err_excluded
-            )
-        elif fitting == "exponential_with_offset":
-            fit = fit_exponential_with_offset(
-                params_excluded,
-                n_mean_excluded,
-                n_err_excluded
-            )
-        elif fitting == "linear":
-            fit = fit_linear(
-                params_excluded,
-                n_mean_excluded,
-                n_err_excluded
-            )
-        elif fitting == "gaussian_without_offset":
-            fit = fit_gaussian_without_offset(
-                params_excluded,
-                n_mean_excluded,
-                n_err_excluded
-            )
-        elif fitting == "gaussian_with_offset":
-            fit = fit_gaussian_with_offset(
-                params_excluded,
-                n_mean_excluded,
-                n_err_excluded
-            )
-        if "figsize" in kwargs:
-            figsize = kwargs["figsize"]
-        else:
-            figsize = (8, 5)
-        fig, ax = plt.subplots(1, 1, figsize=figsize)
-        if "fmt" in kwargs:
-            fmt = kwargs["fmt"]
-        else:
-            fmt = "ok"
-        ax.errorbar(
-            params,
-            n_mean,
-            yerr=n_err,
-            fmt=fmt
+        fit = self._1D_fit(
+            fitting,
+            params_excluded,
+            n_mean_excluded,
+            n_err_excluded
         )
-        if fit:
-            ax.plot(fit.x_fine, fit.y_fine, "-r")
-        if "xlabel" in kwargs:
-            ax.set_xlabel(kwargs["xlabel"])
-        else:
-            ax.set_xlabel("Parameter")
-        if "ylabel" in kwargs:
-            ax.set_ylabel(kwargs["ylabel"])
-        else:
-            ax.set_ylabel("Molecule number")
-        if "title" in kwargs:
-            ax.set_title(kwargs["title"])
+        fig, ax = self._1D_plot(
+            params, y_mean=n_mean, y_err=n_err,
+            fit=fit,
+            **kwargs
+        )
         return fig, ax, fit, img
 
     def multishot_altfile_background_parameter_variation_with_tof(
@@ -370,12 +456,9 @@ class Scope():
         bin_start: int,
         bin_end: int,
         fitting: str = None,
-        param_scale_factor: float = 1.0,
-        param_label: str = None,
         param_index_fit_exclude: List = [],
         **kwargs
     ) -> Tuple[plt.Figure, plt.Axes, Fit, np.ndarray]:
-        param_label = parameter if param_label is None else param_label
         n, tofs, params = [], [], []
         for i, fileno in enumerate(range(file_start, file_stop+1, 2)):
             _, tof_yag_on = read_time_of_flight_from_zip(
@@ -410,7 +493,15 @@ class Scope():
                 break
         assert (file_stop+1-file_start) % len_of_params == 0
 
-        params = np.array(params[:len_of_params])*param_scale_factor
+        if "xscale" in kwargs:
+            xscale = kwargs["xscale"]
+        else:
+            xscale = 1.0
+        if "xoffset" in kwargs:
+            xoffset = kwargs["xoffset"]
+        else:
+            xoffset = 0.0
+        params = np.array(params[:len_of_params])*xscale-xoffset
         rep = int((file_stop+1-file_start) / (2*len_of_params))
         n = np.array(n).reshape((rep, len_of_params))
         n_mean = np.mean(n, axis=0)
@@ -422,64 +513,17 @@ class Scope():
         n_mean_excluded = np.delete(n_mean, param_index_fit_exclude)
         n_err_excluded = np.delete(n_err, param_index_fit_exclude)
 
-        fit = None
-        if fitting == "exponential_without_offset":
-            fit = fit_exponential_without_offset(
-                params_excluded,
-                n_mean_excluded,
-                n_err_excluded
-            )
-        elif fitting == "exponential_with_offset":
-            fit = fit_exponential_with_offset(
-                params_excluded,
-                n_mean_excluded,
-                n_err_excluded
-            )
-        elif fitting == "linear":
-            fit = fit_linear(
-                params_excluded,
-                n_mean_excluded,
-                n_err_excluded
-            )
-        elif fitting == "gaussian_without_offset":
-            fit = fit_gaussian_without_offset(
-                params_excluded,
-                n_mean_excluded,
-                n_err_excluded
-            )
-        elif fitting == "gaussian_with_offset":
-            fit = fit_gaussian_with_offset(
-                params_excluded,
-                n_mean_excluded,
-                n_err_excluded
-            )
-        if "figsize" in kwargs:
-            figsize = kwargs["figsize"]
-        else:
-            figsize = (8, 5)
-        fig, ax = plt.subplots(1, 1, figsize=figsize)
-        if "fmt" in kwargs:
-            fmt = kwargs["fmt"]
-        else:
-            fmt = "ok"
-        ax.errorbar(
-            params,
-            n_mean,
-            yerr=n_err,
-            fmt=fmt
+        fit = self._1D_fit(
+            fitting,
+            params_excluded,
+            n_mean_excluded,
+            n_err_excluded
         )
-        if fit:
-            ax.plot(fit.x_fine, fit.y_fine, "-r")
-        if "xlabel" in kwargs:
-            ax.set_xlabel(kwargs["xlabel"])
-        else:
-            ax.set_xlabel("Parameter [a. u.]")
-        if "ylabel" in kwargs:
-            ax.set_ylabel(kwargs["ylabel"])
-        else:
-            ax.set_ylabel("sum of time of flight [a. u.]")
-        if "title" in kwargs:
-            ax.set_title(kwargs["title"])
+        fig, ax = self._1D_plot(
+            params, y_mean=n_mean, y_err=n_err,
+            fit=fit,
+            **kwargs
+        )
         return fig, ax, fit, tofs
 
     def multishot_altfile_background_frequency_variation_with_image(
@@ -491,8 +535,9 @@ class Scope():
         row_end: int,
         col_start: int,
         col_end: int,
+        fitting: str = None,
         **kwargs
-    ) -> Tuple[plt.Figure, plt.Axes, np.ndarray]:
+    ) -> Tuple[plt.Figure, plt.Axes, Fit, np.ndarray]:
         _all_params = read_parameters_from_zip(
             get_zip_archive(
                 self.rootpath, self.year, self.month, self.day,
@@ -527,27 +572,20 @@ class Scope():
             img.append(_img.mean(axis=0))
             err.append(_n.std()/np.sqrt(len(_n)))
         img = np.array(img)
-        if "figsize" in kwargs:
-            figsize = kwargs["figsize"]
-        else:
-            figsize = (8, 5)
-        fig, ax = plt.subplots(1, 1, figsize=figsize)
-        if "fmt" in kwargs:
-            fmt = kwargs["fmt"]
-        else:
-            fmt = "ok"
-        ax.errorbar(frequencies, n, yerr=err, fmt=fmt)
-        if "xlabel" in kwargs:
-            ax.set_xlabel(kwargs["xlabel"])
-        else:
-            ax.set_xlabel("Laser frequencies")
-        if "ylabel" in kwargs:
-            ax.set_ylabel(kwargs["ylabel"])
-        else:
-            ax.set_ylabel("Molecule number")
-        if "title" in kwargs:
-            ax.set_title(kwargs["title"])
-        return fig, ax, img
+        n = np.array(n)
+        err = np.array(err)
+        fit = self._1D_fit(
+            fitting,
+            frequencies,
+            n,
+            err
+        )
+        fig, ax = self._1D_plot(
+            frequencies, y_mean=n, y_err=err,
+            fit=fit,
+            **kwargs
+        )
+        return fig, ax, fit, img
 
     def multishot_altfile_background_frequency_variation_with_tof(
         self,
@@ -556,8 +594,9 @@ class Scope():
         frequencies: np.ndarray,
         bin_start: int,
         bin_end: int,
+        fitting: str = None,
         **kwargs
-    ) -> Tuple[plt.Figure, plt.Axes, np.ndarray]:
+    ) -> Tuple[plt.Figure, plt.Axes, Fit, np.ndarray]:
         n, err, tofs = [], [], []
         for fileno in range(file_start, file_stop+1, 2):
             _, tof_yag_on = read_time_of_flight_from_zip_no_mean(
@@ -581,24 +620,17 @@ class Scope():
             tofs.append(_tof.mean(axis=0))
             err.append(_n.std()/np.sqrt(len(_n)))
         tofs = np.array(tofs)
-        if "figsize" in kwargs:
-            figsize = kwargs["figsize"]
-        else:
-            figsize = (8, 5)
-        fig, ax = plt.subplots(1, 1, figsize=figsize)
-        if "fmt" in kwargs:
-            fmt = kwargs["fmt"]
-        else:
-            fmt = "ok"
-        ax.errorbar(frequencies, n, yerr=err, fmt=fmt)
-        if "xlabel" in kwargs:
-            ax.set_xlabel(kwargs["xlabel"])
-        else:
-            ax.set_xlabel("Laser frequencies")
-        if "ylabel" in kwargs:
-            ax.set_ylabel(kwargs["ylabel"])
-        else:
-            ax.set_ylabel("Molecule number")
-        if "title" in kwargs:
-            ax.set_title(kwargs["title"])
-        return fig, ax, tofs
+        n = np.array(n)
+        err = np.array(err)
+        fit = self._1D_fit(
+            fitting,
+            frequencies,
+            n,
+            err
+        )
+        fig, ax = self._1D_plot(
+            frequencies, y_mean=n, y_err=err,
+            fit=fit,
+            **kwargs
+        )
+        return fig, ax, fit, tofs

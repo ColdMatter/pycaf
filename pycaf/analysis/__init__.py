@@ -12,18 +12,23 @@ from .curve_fitting import (
     gaussian_without_offset_2D,
     fit_gaussian_without_offset_2D,
     linear,
-    fit_linear
+    fit_linear,
+    lorentzian_with_offset,
+    fit_lorentzian_with_offset,
+    lorentzian_without_offset,
+    fit_lorentzian_without_offset
 )
 from .models import (
     Pattern,
-    Study,
     LinearFit,
     GaussianFitWithOffset,
     GaussianFitWithoutOffset,
     ExponentialFitWithoutOffset,
     ExponentialFitWithOffset,
     GaussianFitWithOffset2D,
-    GaussianFitWithoutOffset2D
+    GaussianFitWithoutOffset2D,
+    LorentzianFitWithOffset,
+    LorentzianFitWithoutOffset
 )
 from .utils import (
     get_zip_archive,
