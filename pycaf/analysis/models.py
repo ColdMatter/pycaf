@@ -13,7 +13,8 @@ class Pattern(BaseModel):
 
 
 class Fit(BaseModel):
-    func: str
+    func_str: str
+    args_str: str
     x: np.ndarray = np.array([])
     y: np.ndarray = np.array([])
     err: Union[None, np.ndarray] = None
