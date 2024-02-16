@@ -90,7 +90,18 @@ class Scope():
             ax.plot(x, y_mean, fmt, label=label)
         if fit:
             ax.plot(fit.x_fine, fit.y_fine, "-r", label="Fit")
-            
+            ax.text(
+                1.03, 0.98,
+                "Fitting info:\n"+fit.func_str+fit.args_str,
+                transform=ax.transAxes,
+                fontsize=12,
+                verticalalignment='top',
+                bbox=dict(
+                    boxstyle='round',
+                    facecolor='lightsteelblue',
+                    alpha=0.15
+                )
+            )
         if "xlabel" in kwargs:
             ax.set_xlabel(kwargs["xlabel"])
         if "ylabel" in kwargs:

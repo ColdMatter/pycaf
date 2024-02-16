@@ -35,7 +35,7 @@ def fit_linear(
     popt, _ = curve_fit(linear, x, y, p0=p0, sigma=err)
     x_fine = np.linspace(np.min(x), np.max(x), n_fine)
     y_fine = linear(x_fine, *popt)
-    func_str = "m*x+c"
+    func_str = "\n y = m*x+c"
     args_str = f"\n m: {popt[0]:e}\n c: {popt[1]:e}"
     fit = LinearFit(
         func_str=func_str,
@@ -77,7 +77,7 @@ def fit_gaussian_with_offset(
     popt, _ = curve_fit(gaussian_with_offset, x, y, p0=p0, sigma=err)
     x_fine = np.linspace(np.min(x), np.max(x), n_fine)
     y_fine = gaussian_with_offset(x_fine, *popt)
-    func_str = "a*exp(-(x-xc)**2/(2*s**2))+o"
+    func_str = "\n y = a*exp(-(x-xc)**2/(2*s**2))+o"
     args_str = f"\n a: {popt[0]:e}\n xc: {popt[1]:e}" + \
         f"\n s: {np.abs(popt[2]):e}\n o: {popt[3]:e}"
     fit = GaussianFitWithOffset(
@@ -120,7 +120,7 @@ def fit_gaussian_without_offset(
     popt, _ = curve_fit(gaussian_without_offset, x, y, p0=p0, sigma=err)
     x_fine = np.linspace(np.min(x), np.max(x), n_fine)
     y_fine = gaussian_without_offset(x_fine, *popt)
-    func_str = "a*exp(-(x-xc)**2/(2*s**2))"
+    func_str = "\n y = a*exp(-(x-xc)**2/(2*s**2))"
     args_str = f"\n a: {popt[0]:e}\n xc: {popt[1]:e}\n s: {np.abs(popt[2]):e}"
     fit = GaussianFitWithoutOffset(
         func_str=func_str,
@@ -181,7 +181,7 @@ def fit_gaussian_without_offset_2D(
         tuple(sigma_trial), theta_trial
     ]
     popt, _ = curve_fit(gaussian_without_offset_2D, (mx, my), data, p0=p0)
-    func_str = "a*exp(-((x-xc)**2/(2*xs**2)+(y-yc)**2/(2*ys**2)))"
+    func_str = "\n y = a*exp(-((x-xc)**2/(2*xs**2)+(y-yc)**2/(2*ys**2)))"
     args_str = f"\n a: {popt[0]:e}\n (xc, yc): {popt[1]:e}" + \
         f"\n (xs, ys): {popt[2]:e}\n"
     fit = GaussianFitWithoutOffset2D(
@@ -244,7 +244,7 @@ def fit_gaussian_with_offset_2D(
         tuple(sigma_trial), offset_trial, theta_trial
     ]
     popt, _ = curve_fit(gaussian_with_offset_2D, (mx, my), data, p0=p0)
-    func_str = "a*exp(-((x-xc)**2/(2*xs**2)+(y-yc)**2/(2*ys**2)))+o"
+    func_str = "\n y = a*exp(-((x-xc)**2/(2*xs**2)+(y-yc)**2/(2*ys**2)))+o"
     args_str = f"\n a: {popt[0]:e}\n (xc, yc): {popt[1]:e}" + \
         f"\n (xs, ys): {popt[2]:e}\n o: {popt[3]:e}"
     fit = GaussianFitWithOffset2D(
@@ -283,7 +283,7 @@ def fit_exponential_without_offset(
     popt, _ = curve_fit(exponential_without_offset, x, y, p0=p0, sigma=err)
     x_fine = np.linspace(np.min(x), np.max(x), n_fine)
     y_fine = exponential_without_offset(x_fine, *popt)
-    func_str = "a*exp(-(x-xc)/r)"
+    func_str = "\n y = a*exp(-(x-xc)/r)"
     args_str = f"\n a: {popt[0]:e}\n xc: {popt[1]:e}" + \
         f"\n r: {popt[2]:e}"
     fit = ExponentialFitWithoutOffset(
@@ -325,7 +325,7 @@ def fit_exponential_with_offset(
     popt, _ = curve_fit(exponential_with_offset, x, y, p0=p0, sigma=err)
     x_fine = np.linspace(np.min(x), np.max(x), n_fine)
     y_fine = exponential_with_offset(x_fine, *popt)
-    func_str = "a*exp(-(x-xc)/r)+o"
+    func_str = "\n y = a*exp(-(x-xc)/r)+o"
     args_str = f"\n a: {popt[0]:e}\n xc: {popt[1]:e}" + \
         f"\n r: {popt[2]:e}\n o: {popt[3]:e}"
     fit = ExponentialFitWithOffset(
@@ -366,7 +366,7 @@ def fit_lorentzian_without_offset(
     popt, _ = curve_fit(lorentzian_without_offset, x, y, p0=p0, sigma=err)
     x_fine = np.linspace(np.min(x), np.max(x), n_fine)
     y_fine = lorentzian_without_offset(x_fine, *popt)
-    func_str = "a*(0.5*w**2/((x-c)**2+(0.5*w**2)))"
+    func_str = "\n y = a*(0.5*w**2/((x-c)**2+(0.5*w**2)))"
     args_str = f"\n a: {popt[0]:e}\n xc: {popt[1]:e}" + \
         f"\n w: {np.abs(popt[2]):e}"
     fit = LorentzianFitWithoutOffset(
@@ -408,9 +408,9 @@ def fit_lorentzian_with_offset(
     popt, _ = curve_fit(lorentzian_with_offset, x, y, p0=p0, sigma=err)
     x_fine = np.linspace(np.min(x), np.max(x), n_fine)
     y_fine = lorentzian_with_offset(x_fine, *popt)
-    func_str = "a*(0.5*w**2/((x-xc)**2+(0.5*w**2)))+o"
+    func_str = "\n y = a*(0.5*w**2/((x-xc)**2+(0.5*w**2)))+o"
     args_str = f"\n a: {popt[0]:e}\n xc: {popt[1]:e}" + \
-        f"\n w: {np.abs(popt[2]):e}\n o: {popt[3]}"
+        f"\n w: {np.abs(popt[2]):e}\n o: {popt[3]:e}"
     fit = LorentzianFitWithOffset(
         func_str=func_str,
         args_str=args_str,
