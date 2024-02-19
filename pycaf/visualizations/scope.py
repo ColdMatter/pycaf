@@ -11,7 +11,6 @@ from ..analysis import (
     read_time_of_flight_from_zip_no_mean,
     read_images_from_zip,
     read_parameters_from_zip,
-    smooth_time_of_flight,
     fit_linear,
     fit_exponential_without_offset,
     fit_exponential_with_offset,
@@ -59,6 +58,8 @@ class Scope():
 
     def _1D_plot(
         self,
+        file_start: int,
+        file_stop: int,
         x: np.ndarray,
         y_mean: np.ndarray,
         y_err: np.ndarray = None,
@@ -88,11 +89,25 @@ class Scope():
             )
         else:
             ax.plot(x, y_mean, fmt, label=label)
+        date_str = f"{self.year}/{self.month}/{self.day}"
+        file_str = f"{file_start}-{file_stop}"
+        ax.text(
+            1.03, 0.98,
+            f"File Info: {date_str}: {file_str}",
+            transform=ax.transAxes,
+            fontsize=12,
+            verticalalignment='top',
+            bbox=dict(
+                boxstyle='round',
+                facecolor='lightsteelblue',
+                alpha=0.15
+            )
+        )
         if fit:
             ax.plot(fit.x_fine, fit.y_fine, "-r", label="Fit")
             ax.text(
-                1.03, 0.98,
-                "Fitting info:\n"+fit.func_str+fit.args_str,
+                1.03, 0.9,
+                "Fitting info:"+fit.func_str+fit.args_str,
                 transform=ax.transAxes,
                 fontsize=12,
                 verticalalignment='top',
@@ -108,6 +123,10 @@ class Scope():
             ax.set_ylabel(kwargs["ylabel"])
         if "title" in kwargs:
             ax.set_title(kwargs["title"])
+        if "xlim" in kwargs:
+            ax.set_xlim(kwargs["xlim"])
+        if "ylim" in kwargs:
+            ax.set_ylim(kwargs["ylim"])
         ax.legend()
         return fig, ax
 
@@ -135,6 +154,8 @@ class Scope():
         row_end: int,
         col_start: int,
         col_end: int,
+        bin_start: int = 0,
+        bin_stop: int = -1,
         **kwargs
     ) -> Tuple[plt.Figure, plt.Axes]:
         _all_params = read_parameters_from_zip(
@@ -148,7 +169,7 @@ class Scope():
             exposure_time*self.constants["gamma"]
             * self.constants["collection_solid_angle"]
         )
-        n, img, tof = [], [], []
+        n, img, tofs = [], [], []
         for fileno in range(file_start, file_stop+1, 2):
             img_yag_on = read_images_from_zip(
                 get_zip_archive(
@@ -181,9 +202,12 @@ class Scope():
             )
             n.append(_n)
             img.append(_img)
-            tof.append(_tof)
+            tofs.append(_tof)
         img = np.mean(img, axis=0)
-        tof = np.mean(tof, axis=0)
+        tofs = np.array(tofs)
+        tofs_max = np.max(tofs, axis=0)
+        tofs_min = np.min(tofs, axis=0)
+        tofs = tofs.mean(axis=0)
         t = 1000*np.arange(0, 1000)*(1.0/sr)
         h_profile = np.sum(img, axis=0)
         v_profile = np.sum(img, axis=1)
@@ -296,7 +320,32 @@ class Scope():
         )
         ax2.set_xlabel("Distance [mm]")
         ax2.legend()
-        ax3.plot(t, tof, ".k", t, smooth_time_of_flight(tof), "-r")
+        ax3.plot(t, tofs, "-k")
+        if "show_variation" in kwargs:
+            if kwargs["show_variation"]:
+                ax3.fill_between(
+                    t,
+                    tofs_min,
+                    tofs_max,
+                    alpha=0.1,
+                    color="k"
+                )
+        if "show_bin" in kwargs:
+            if kwargs["show_bin"]:
+                if "facecolor" in kwargs:
+                    fc = kwargs["facecolor"]
+                else:
+                    fc = "blue"
+                if "alpha" in kwargs:
+                    alpha = kwargs["alpha"]
+                else:
+                    alpha = 0.2
+                ax3.fill_between(
+                    t[bin_start: bin_stop],
+                    tofs[bin_start: bin_stop],
+                    alpha=alpha,
+                    color=fc
+                )
         ax3.yaxis.tick_right()
         ax3.yaxis.set_label_position("right")
         ax3.set_ylabel("PMT signal [V]")
@@ -336,6 +385,7 @@ class Scope():
         t = np.arange(0, 1000, 1)*(1000.0/sr)
 
         fig, ax = self._1D_plot(
+            file_start, file_stop,
             t, y_mean=tofs,
             label=f"Sum(Bin region): {int_val:.2f}",
             **kwargs
@@ -453,6 +503,7 @@ class Scope():
             n_err_excluded
         )
         fig, ax = self._1D_plot(
+            file_start, file_stop,
             params, y_mean=n_mean, y_err=n_err,
             fit=fit,
             **kwargs
@@ -531,6 +582,7 @@ class Scope():
             n_err_excluded
         )
         fig, ax = self._1D_plot(
+            file_start, file_stop,
             params, y_mean=n_mean, y_err=n_err,
             fit=fit,
             **kwargs
@@ -592,6 +644,7 @@ class Scope():
             err
         )
         fig, ax = self._1D_plot(
+            file_start, file_stop,
             frequencies, y_mean=n, y_err=err,
             fit=fit,
             **kwargs
@@ -640,6 +693,7 @@ class Scope():
             err
         )
         fig, ax = self._1D_plot(
+            file_start, file_stop,
             frequencies, y_mean=n, y_err=err,
             fit=fit,
             **kwargs
