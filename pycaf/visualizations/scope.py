@@ -1,4 +1,4 @@
-from typing import Tuple, List
+from typing import Tuple, List, Union
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import numpy as np
@@ -290,7 +290,8 @@ class Scope():
         fig.colorbar(_img, cax=ax4, orientation="horizontal")
         ax0.add_patch(
             Rectangle(
-                (row_start, col_start), row_end-row_start, col_end-col_start,
+                (row_start, col_start),
+                row_end-row_start, col_end-col_start,
                 edgecolor='white',
                 facecolor='none',
                 fill=False,
@@ -421,11 +422,11 @@ class Scope():
         self,
         file_start: int,
         file_stop: int,
-        parameter: str,
-        row_start: int,
-        row_end: int,
-        col_start: int,
-        col_end: int,
+        parameter: Union[str, np.ndarray, List[Union[int, float]]],
+        row_start: int = 0,
+        row_end: int = -1,
+        col_start: int = 0,
+        col_end: int = -1,
         fitting: str = None,
         param_index_fit_exclude: List = [],
         **kwargs
@@ -455,12 +456,6 @@ class Scope():
                     fileno+1, self.prefix
                 )
             )
-            _all_params = read_parameters_from_zip(
-                get_zip_archive(
-                    self.rootpath, self.year, self.month, self.day,
-                    fileno+1, self.prefix
-                )
-            )
             _, img_rows, img_cols = img_yag_off.shape
             _img = np.mean(img_yag_on-img_yag_off, axis=0)
             _n = number_multiplier*np.sum(
@@ -468,13 +463,26 @@ class Scope():
             )
             n.append(_n)
             img.append(_img)
-            params.append(_all_params[parameter])
-
-        for i, param in enumerate(params):
-            if i != 0 and param == params[0]:
-                len_of_params = i
-                break
-        assert (file_stop+1-file_start) % len_of_params == 0
+            if type(parameter) is str:
+                _all_params = read_parameters_from_zip(
+                    get_zip_archive(
+                        self.rootpath, self.year, self.month, self.day,
+                        fileno+1, self.prefix
+                    )
+                )
+                params.append(_all_params[parameter])
+        if type(parameter) is str:
+            for i, param in enumerate(params):
+                if i != 0 and param == params[0]:
+                    len_of_params = i
+                    break
+            assert (file_stop+1-file_start) % len_of_params == 0
+        elif type(parameter) is np.ndarray:
+            params = parameter
+            len_of_params = len(parameter)
+        else:
+            params = np.array(parameter)
+            len_of_params = len(parameter)
 
         if "xscale" in kwargs:
             xscale = kwargs["xscale"]
@@ -514,9 +522,9 @@ class Scope():
         self,
         file_start: int,
         file_stop: int,
-        parameter: str,
-        bin_start: int,
-        bin_end: int,
+        parameter: Union[str, np.ndarray, List[Union[int, float]]],
+        bin_start: int = 0,
+        bin_end: int = -1,
         fitting: str = None,
         param_index_fit_exclude: List = [],
         **kwargs
@@ -535,25 +543,32 @@ class Scope():
                     fileno+1, self.prefix
                 )
             )
-            _all_params = read_parameters_from_zip(
-                get_zip_archive(
-                    self.rootpath, self.year, self.month, self.day,
-                    fileno+1, self.prefix
-                )
-            )
             _tof = tof_yag_on - tof_yag_off
             _n = np.sum(
                 _tof[bin_start:bin_end]
             )
             n.append(_n)
             tofs.append(_tof)
-            params.append(_all_params[parameter])
-
-        for i, param in enumerate(params):
-            if i != 0 and param == params[0]:
-                len_of_params = i
-                break
-        assert (file_stop+1-file_start) % len_of_params == 0
+            if type(parameter) is str:
+                _all_params = read_parameters_from_zip(
+                    get_zip_archive(
+                        self.rootpath, self.year, self.month, self.day,
+                        fileno+1, self.prefix
+                    )
+                )
+                params.append(_all_params[parameter])
+        if type(parameter) is str:
+            for i, param in enumerate(params):
+                if i != 0 and param == params[0]:
+                    len_of_params = i
+                    break
+            assert (file_stop+1-file_start) % len_of_params == 0
+        elif type(parameter) is np.ndarray:
+            params = parameter
+            len_of_params = len(parameter)
+        else:
+            params = np.array(parameter)
+            len_of_params = len(parameter)
 
         if "xscale" in kwargs:
             xscale = kwargs["xscale"]
@@ -583,7 +598,9 @@ class Scope():
         )
         fig, ax = self._1D_plot(
             file_start, file_stop,
-            params, y_mean=n_mean, y_err=n_err,
+            params_excluded,
+            y_mean=n_mean_excluded,
+            y_err=n_err_excluded,
             fit=fit,
             **kwargs
         )
