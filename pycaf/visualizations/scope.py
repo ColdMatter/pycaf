@@ -457,11 +457,12 @@ class Scope():
                 )
             )
             _, img_rows, img_cols = img_yag_off.shape
-            _img = np.mean(img_yag_on-img_yag_off, axis=0)
+            _img = img_yag_on-img_yag_off
             _n = number_multiplier*np.sum(
-                _img[row_start:row_end, col_start:col_end]
+                _img[:, row_start:row_end, col_start:col_end], axis=(1, 2)
             )
             n.append(_n)
+            no_of_imgs = len(_n)
             img.append(_img)
             if type(parameter) is str:
                 _all_params = read_parameters_from_zip(
@@ -476,13 +477,13 @@ class Scope():
                 if i != 0 and param == params[0]:
                     len_of_params = i
                     break
-            assert (file_stop+1-file_start) % len_of_params == 0
         elif type(parameter) is np.ndarray:
             params = parameter
             len_of_params = len(parameter)
         else:
             params = np.array(parameter)
             len_of_params = len(parameter)
+        assert (file_stop+1-file_start) % len_of_params == 0
 
         if "xscale" in kwargs:
             xscale = kwargs["xscale"]
@@ -494,11 +495,13 @@ class Scope():
             xoffset = 0.0
         params = np.array(params[:len_of_params])*xscale-xoffset
         rep = int((file_stop+1-file_start) / (2*len_of_params))
-        n = np.array(n).reshape((rep, len_of_params))
-        n_mean = np.mean(n, axis=0)
-        n_err = np.std(n, axis=0)/np.sqrt(rep)
-        img = np.array(img).reshape((rep, len_of_params, img_rows, img_cols))
-        img = np.mean(img, axis=0)
+        n = np.array(n).reshape((rep, len_of_params, no_of_imgs))
+        n_mean = np.mean(n, axis=(0, 2))
+        n_err = np.std(n, axis=(0, 2))/np.sqrt(rep*no_of_imgs)
+        img = np.array(img).reshape((
+            rep, len_of_params, no_of_imgs, img_rows, img_cols
+        ))
+        img = np.mean(img, axis=(0, 2))
 
         params_excluded = np.delete(params, param_index_fit_exclude)
         n_mean_excluded = np.delete(n_mean, param_index_fit_exclude)
