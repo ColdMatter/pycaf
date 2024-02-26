@@ -65,7 +65,7 @@ We would like to acknowledge the open-source community for creating and maintain
                     "remote_paths":
                         {
                             "bay_2": "tcp://localhost:1187/controller.rem",
-                            "bay_3": "tcp://172.22.116.195:1187/controller.rem"
+                            "bay_3": "tcp://x.x.x.x:1187/controller.rem"
                         }
                 },
             "WavemeterLock":
@@ -74,7 +74,7 @@ We would like to acknowledge the open-source community for creating and maintain
                     "remote_paths": 
                         {
                             "bay_2": "tcp://localhost:1234/controller.rem",
-                            "bay_3": "tcp://172.22.116.195:5555/controller.rem"
+                            "bay_3": "tcp://x.x.x.x:5555/controller.rem"
                         },
                     "lasers":
                         {
