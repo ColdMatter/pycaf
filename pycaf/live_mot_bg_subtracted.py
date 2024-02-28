@@ -34,6 +34,8 @@ class LiveMOTBGSubtracted(Experiment):
         config_path: str,
         interval: Union[int, float],
         script: str,
+        parameter: str,
+        value: Union[int, float],
         timegap_in_ms: int = 1000,
         color_max: int = 50
     ) -> None:
@@ -41,6 +43,8 @@ class LiveMOTBGSubtracted(Experiment):
         super().connect()
         self.image_dirpath = self.config["temp_image_path"]
         self.script = script
+        self.parameter = parameter
+        self.value = value
         self.timegap_in_ms = timegap_in_ms
         self.color_max = color_max
         self.old_color_max = color_max
@@ -121,7 +125,7 @@ class LiveMOTBGSubtracted(Experiment):
     def _call_motmaster_and_analyse_image(
         self
     ) -> None:
-        self.motmaster_single_run(self.script)
+        self.motmaster_single_run(self.script, self.parameter, self.value)
         try:
             images = self.read_images()
         except Exception as e:
@@ -130,8 +134,8 @@ class LiveMOTBGSubtracted(Experiment):
             self.delete_images()
         except Exception as e:
             print(f"Exception {e} occured in during deleting images")
-        if len(images) == 2:
-            self.image = images[0, :, :] - images[1, :, :]
+        if len(images) >= 2:
+            self.image = images[0::2, :, :] - images[1::2, :, :]
         time.sleep(0.1)
         return None
 
@@ -140,11 +144,15 @@ if __name__ == "__main__":
     config_path = "C:\\ControlPrograms\\pycaf\\config_bec.json"
     interval = 0.1
     script = "MOTBasicMultiTrigger"
+    parameter = "CameraTriggerStart"
+    value = 3000
     timegap_in_ms = 20
     live_mot = LiveMOTBGSubtracted(
         config_path=config_path,
         interval=interval,
         script=script,
+        parameter=parameter,
+        value=value,
         timegap_in_ms=timegap_in_ms,
         color_max=100
     )

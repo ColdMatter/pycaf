@@ -4,12 +4,10 @@ from zipfile import ZipFile
 import json
 import plotly.graph_objects as go
 
-from .analysis import (
+from pycaf.analysis import (
     get_zip_archive,
     read_digital_patterns_from_zip,
-    read_analog_patterns_from_zip
-)
-from .analysis import (
+    read_analog_patterns_from_zip,
     Pattern
 )
 
