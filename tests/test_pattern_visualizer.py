@@ -1,5 +1,5 @@
 from pathlib import Path
-from pycaf.pattern_visualizer import PatternVisualizer
+from pycaf.visualizations import PatternVisualizer
 
 
 def test_pattern_visualizer():

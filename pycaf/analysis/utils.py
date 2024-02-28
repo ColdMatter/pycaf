@@ -524,3 +524,15 @@ def calculate_lifetime(
     temporal_parameter: str,
 ) -> None:
     return None
+
+
+def convert_chirp_freq_to_tof_bin(
+    pmt_distance_in_meter: float,
+    chirp_freq_in_MHz: float,
+    laser_frequency_in_THz: float,
+    sampling_rate: int
+) -> int:
+    bin_number = pmt_distance_in_meter/(
+        chirp_freq_in_MHz*1e6*3e8/(laser_frequency_in_THz*1e12)
+    )*sampling_rate
+    return int(bin_number)

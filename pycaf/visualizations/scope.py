@@ -287,6 +287,8 @@ class Scope():
         _img = ax0.imshow(img, extent=bounds, origin='lower')
         if "clim" in kwargs:
             _img.set_clim(kwargs["clim"])
+        if "title" in kwargs:
+            fig.suptitle(kwargs["title"])
         fig.colorbar(_img, cax=ax4, orientation="horizontal")
         ax0.add_patch(
             Rectangle(

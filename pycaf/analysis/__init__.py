@@ -50,5 +50,6 @@ from .utils import (
     calculate_cloud_size_from_image_1d_gaussian,
     calculate_cloud_size_from_image_2d_gaussian,
     calculate_temperature,
-    calculate_lifetime
+    calculate_lifetime,
+    convert_chirp_freq_to_tof_bin
 )
