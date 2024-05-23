@@ -32,11 +32,14 @@ from .models import (
 )
 from .utils import (
     get_zip_archive,
+    get_json_metadata,
+    get_next_json_metadata_path,
     create_file_list,
     read_digital_patterns_from_zip,
     read_analog_patterns_from_zip,
     read_images_from_zip,
     read_parameters_from_zip,
+    read_frequencies_from_zip,
     read_time_of_flight_from_zip,
     read_time_of_flight_from_zip_no_mean,
     smooth_time_of_flight,

@@ -1,10 +1,38 @@
-from typing import List
 import usb
+import usb.backend.libusb0 as libusb0
 import time
-
 import numpy as np
 
-import customhandler as ch
+
+class DeviceHandle(usb.DeviceHandle):
+
+    """A patched version of the usb.DeviceHandle that allows us to
+       __enter__ and __exit__ safely."""
+
+    def __init__(self, dev):
+        """Inherit everything from the super class."""
+        super(DeviceHandle, self).__init__(dev)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.finalize()
+
+
+def print_all_port_numbers_bus_numbers(idVendor=0x0456, idProduct=0xee25):
+    devs = list(
+        usb.core.find(
+            idVendor=idVendor,
+            idProduct=idProduct,
+            find_all=True,
+            backend=libusb0.get_backend()
+            )
+        )
+    for i, d in enumerate(devs):
+        print(
+            f"Device {i}, Port number: {d}, Bus number: {d.address}"
+        )
 
 
 class AD9959(object):
@@ -20,16 +48,17 @@ class AD9959(object):
         pid=0xee25,
         port_numbers=None,
         bus_number=None,
+        address=None,
         auto_update=True,
         rfclk=30e6,
         clkmtp=10,
         channel=0
-    ):
+    ) -> None:
         """Initializes a handler for the usb controler.
 
-        If more than one AD9959 are connected via USB, they are in
-        principle indistinguishable. The only way to identify them
-        is by specifying their USB bus address.
+        If more than one AD9959 are connected via USB, they are in principle
+        indistinguishable. The only way
+        to identify them is by specifying their USB bus address.
 
         vid : hex
             vendor ID of the device
@@ -40,43 +69,43 @@ class AD9959(object):
             between identical devices.
         port_numbers: tuple
             Contains the port and subport numbers to distinguish
-            #between identical devices.
+            between identical devices.
         refclk: float
             Reference clock frequency in Hertz.
         clkmtp: int
             Clock multiplier. The reference clock signal is internally
-            multiplied by this value to generate the system clock frequency.
+            multiplied by this value to generate
+            the system clock frequency.
         """
         self.channel = channel
 
         # find all usb devices with matching vid/pid
-        devs: List = list(
-            usb.core.find(
-                idVendor=vid,
-                idProduct=pid,
-                find_all=True
+        devs = list(usb.core.find(
+            idVendor=vid,
+            idProduct=pid,
+            find_all=True,
+            backend=libusb0.get_backend()
             )
         )
         dev = None
-        dev_mess: str = \
-            f"No devices with matching vID/pID {hex(vid)}/{hex(pid)} found!"
+        dev_mess = 'No devices with matching vID/pID ' + \
+            f'{hex(vid)}/{hex(pid)} found!'
         assert len(devs) > 0, dev_mess
         # if more than one AD9959 is present, decide by usb port address
         if len(devs) > 1:
-            print("More than one AD9959 device is present with\n")
+            assert address is not None and bus_number is not None, \
+                'More than one AD9959 present. ' + \
+                'Specify USB bus and port numbers!'
             for d in devs:
-                print(
-                    f"port_numbers: {d.port_numbers} and bus_number: {d.bus}"
-                )
-                if d.port_numbers == port_numbers and d.bus == bus_number:
+                if d.address == address and d.bus == bus_number:
                     dev = d
                     break
             assert dev is not None, \
-                "No matching device was found. Check bus and port numbers!"
+                'No matching device was found. Check bus and port numbers!'
+
         else:
             dev = devs[0]
 
-        self.dev = dev
         dev.set_configuration()
         cnf = dev.configurations()[0]
         intf = cnf[(0, 0)]
@@ -110,8 +139,8 @@ class AD9959(object):
         """Resets the usb handler via which communication takes place.
 
         This method can be used to prevent USBErrors that occur when
-        communication with the device times out because it is still
-        in use by another process.
+        communication with the device times out
+        because it is still in use by another process.
         """
         self.dev.reset()
 
@@ -142,7 +171,7 @@ class AD9959(object):
         message = bytearray.fromhex(message)
 
         # endpoint 0x04 will forward the word to the specified register
-        with ch.DeviceHandle(self.dev) as dh:
+        with DeviceHandle(self.dev) as dh:
             dh.bulkWrite(self._ep4, message)
 
     def _read_from_register(self, register, size):
@@ -163,7 +192,7 @@ class AD9959(object):
 
         # set the controler to readback mode
         begin_readback = bytearray.fromhex('07 00 ' + size_hex)
-        with ch.DeviceHandle(self.dev) as dh:
+        with DeviceHandle(self.dev) as dh:
             dh.bulkWrite(self._ep1, begin_readback)
 
         # construct the command to read out the register
@@ -172,17 +201,16 @@ class AD9959(object):
             register_bin = (7-len(register_bin))*'0' + register_bin
         register_bin = ''.join(' 0' + b for b in register_bin)
         readout_command = bytearray.fromhex('01' + register_bin)
-        with ch.DeviceHandle(self.dev) as dh:
+        with DeviceHandle(self.dev) as dh:
             dh.bulkWrite(self._ep4, readout_command)
-
         time.sleep(0.1)
         # read the message from endpoint 88
-        with ch.DeviceHandle(self.dev) as dh:
+        with DeviceHandle(self.dev) as dh:
             readout = dh.bulkRead(self._ep88, size=size)
 
         # turn off readback mode
         end_readback = bytearray.fromhex('04 00')
-        with ch.DeviceHandle(self.dev) as dh:
+        with DeviceHandle(self.dev) as dh:
             dh.bulkWrite(self._ep1, end_readback)
         return readout
 
@@ -191,17 +219,16 @@ class AD9959(object):
 
         """
         load_message = bytearray.fromhex('0C 00')
-        with ch.DeviceHandle(self.dev) as dh:
+        with DeviceHandle(self.dev) as dh:
             dh.bulkWrite(self._ep1, load_message)
             readout = dh.bulkRead(self._ep81, 1)
         return readout
 
     def _update_IO(self):
         """Updates the IO to the DDS chip (same as GUI function).
-
         """
         update_message = bytearray.fromhex('0C 10')
-        with ch.DeviceHandle(self.dev) as dh:
+        with DeviceHandle(self.dev) as dh:
             dh.bulkWrite(self._ep1, update_message)
             readout = dh.bulkRead(self._ep81, 1)
         return readout
@@ -238,12 +265,12 @@ class AD9959(object):
         fr1_old_bitstring = ''.join(str(b) for b in fr1_old)
 
         # update the multiplier section of the bitstring
-        fr1_new_bitstring = \
-            fr1_old_bitstring[0] + multi_bin + fr1_old_bitstring[6:]
+        fr1_new_bitstring = fr1_old_bitstring[0] + multi_bin + \
+            fr1_old_bitstring[6:]
         if self.system_clock_frequency > 255e6:
-            list_of_fr1_new_bitstring = list(fr1_new_bitstring)
-            list_of_fr1_new_bitstring[0] = '1'
-            fr1_new_bitstring = ''.join(list_of_fr1_new_bitstring)
+            _l = list(fr1_new_bitstring)
+            _l[0] = '1'
+            fr1_new_bitstring = ''.join(_l)
             print("System clock exceeds 255MHz, VCO gain bit was set to True!")
         fr1_word = ''.join(' 0' + b for b in fr1_new_bitstring)[1:]
 
@@ -269,9 +296,8 @@ class AD9959(object):
         channel_select_bin = list('0000')
         for ch in channels:
             channel_select_bin[ch] = '1'
-        channel_select_bin = channel_select_bin[::-1] # we have inverse order
+        channel_select_bin = channel_select_bin[::-1]
         channel_select_bin = ''.join(channel_select_bin)
-                                                      # in the register
         csr_old = self._read_from_register(0x00, 8)
         csr_old_bin = ''.join(str(b) for b in csr_old)
         csr_new_bin = channel_select_bin[:4] + csr_old_bin[4:]
@@ -292,8 +318,8 @@ class AD9959(object):
         :frequency: float
             frequency to be set on channel(s)
         :returns: bytearray, bytearray
-           The message to select the channels and set the frequency word, which can both
-           be sent to self._ep4
+           The message to select the channels and set the frequency word,
+           which can both be sent to self._ep4
 
         """
         if np.issubdtype(type(channel), np.integer):
@@ -305,9 +331,8 @@ class AD9959(object):
         channel_select_bin = list('0000')
         for ch in channels:
             channel_select_bin[ch] = '1'
-        channel_select_bin = channel_select_bin[::-1] # we have inverse order
-        channel_select_bin = ''.join(channel_select_bin)
-                                                      # in the register
+        channel_select_bin = channel_select_bin[::-1]  # we have inverse order
+        channel_select_bin = ''.join(channel_select_bin)  # in the register
         # preserve the information that is stored in the CSR
         csr_old = self._read_from_register(0x00, 8)
         csr_old_bin = ''.join(str(b) for b in csr_old)
@@ -331,18 +356,24 @@ class AD9959(object):
         message_channel_select = bytearray.fromhex(message)
 
         # Now compute the same message to select the frequency
-        assert frequency <= self.system_clock_frequency, ("Frequency should not"
-                + " exceed system clock frequency! System clock frequency is {0}Hz".format(self.system_clock_frequency))
+        assert frequency <= self.system_clock_frequency, (
+            "Frequency should not exceed system clock frequency! System " +
+            f"clock frequency is {self.system_clock_frequency}Hz"
+        )
 
         # calculate the fraction of the full frequency
         fraction = frequency/self.system_clock_frequency
-        fraction_bin = bin(round(fraction * (2**32 - 1))).lstrip('0b') # full range are 32 bit
+        # full range are 32 bit
+        fraction_bin = bin(round(fraction * (2**32 - 1))).lstrip('0b')
         if len(fraction_bin) < 32:
             fraction_bin = (32-len(fraction_bin)) * '0' + fraction_bin
-        closest_possible_value = (int(fraction_bin, base=2)/(2**32 - 1) *
-                                    self.system_clock_frequency)
-        print('Frequency of channel {1} encoded as closest possible value {0}MHz'.format(
-                                                        closest_possible_value/1e6, channel))
+        closest_possible_value = (
+            int(fraction_bin, base=2)/(2**32 - 1) * self.system_clock_frequency
+        )
+        print(
+            f"Frequency of channel {channel} encoded as closest " +
+            f"possible value {closest_possible_value/1e6} MHz"
+        )
 
         # set the frequency word in the frequency register
         frequency_word = ''.join(' 0' + b for b in fraction_bin)
@@ -352,23 +383,30 @@ class AD9959(object):
         # express the register name as a binary. Maintain the format that is
         # understood by endpoint 0x04. The first bit signifies read/write,
         # the next 7 bits specify the register
-        register_bin = bin(0x04).lstrip('0b') # 0x04 = frequency register
+        # 0x04 = frequency register
+        register_bin = bin(0x04).lstrip('0b')
         if len(register_bin) < 7:
             register_bin = (7-len(register_bin))*'0' + register_bin
 
         register_bin = ''.join(' 0' + b for b in register_bin)
 
         # construct the full message that is sent to the endpoint
-        message = '00' + register_bin  + ' ' + word
+        message = '00' + register_bin + ' ' + word
         message_frequency_word = bytearray.fromhex(message)
 
         return message_channel_select, message_frequency_word
 
-    def set_precomputed_frequency(self, message_channel_select, message_frequency_word):
+    def set_precomputed_frequency(
+        self,
+        message_channel_select,
+        message_frequency_word
+    ):
         """This method sets the frequency from precomputed byte-encoded words.
 
-        The input for this method should be the ouput of self.precompute_frequency_word.
-        This method only send the precomputed byte arrays to enpoint 4 of the USB handler and
+        The input for this method should be the ouput of
+        self.precompute_frequency_word.
+        This method only send the precomputed byte arrays
+        to enpoint 4 of the USB handler and
         thus be faster than the self.set_frequency method.
 
         :message_channel_select: bytearray
@@ -378,136 +416,146 @@ class AD9959(object):
             Encodes the setting of the frequency word.
 
         """
-        with ch.DeviceHandle(self.dev) as dh:
+        with DeviceHandle(self.dev) as dh:
             dh.bulkWrite(self._ep4, message_channel_select)
             dh.bulkWrite(self._ep4, message_frequency_word)
+
+    def toggle_amplitude_scaling(self, channel=None, amplitude_scaling=None):
+        """
+        Changes the amplitude modulation enable bit for a given channel.
+
+        :channel: int
+            Channel(s) for which the amplitude scaling
+            should be enabled/disabled.
+        :amplitude_scaling: bool
+            If None, current state is toggled. Else the
+            amplitude scaling will be set to `amplitude_scaling`.
+
+        """
+        if channel is None:
+            channel = self.channel
+
+        # select the chosen channels
+        self._channel_select(channel)
+
+        # load the current amplitude control register word
+        acr = self._read_from_register(0x06, 24)
+
+        # set the new state of amplitude scaling bit
+        if amplitude_scaling is None:
+            acr[12] = (acr[12] + 1) % 2
+        elif amplitude_scaling:
+            acr[12] = 1
+        else:
+            acr[12] = 0
+
+        # construct the command for the cypress chip
+        acr_new_bin = ''.join(' 0'+str(b) for b in acr)
+        acr_new_bin = acr_new_bin[1:]
+
+        # write new values to register
+        self._write_to_dds_register(0x06, acr_new_bin)
+
+        # update I/O
+        self._load_IO()
+        if self.auto_update:
+            self._update_IO()
+
+    def set_amplitude(self, asf, channel=None, channel_word=0):
+        """ Sets the amplitude scaling factor for a given channel.
+
+        :asf: float
+            Between 0 and 1. DACs have 10-bit resolution.
+        :channel: int
+            Channel for which the amplitude scaling factor is set.
+        :channel_word: int
+            Channel word for the given channel. Every channel has
+            16 channel word registers that can be used for modulation.
+        """
+        if channel is None:
+            channel = self.channel
+
+        assert channel_word < 16, (
+            f"Channel word cannot exceed 15, input was {channel_word}"
+        )
+
+        # select the chosen channels
+        self._channel_select(channel)
+
+        # construct the asf word, full range are 10 bit
+        fraction_bin = bin(int(round(asf * (2**10 - 1)))).lstrip('0b')
+
+        # load the current amplitude control register word
+        acr = self._read_from_register(0x06, 24)
+
+        # set the asf word in the amplitude control register
+        asf_word = ''.join(' 0' + b for b in fraction_bin)
+        asf_word = asf_word[1:]
+
+        acr_new = acr[:15] + asf_word
+
+        if channel_word == 0:
+            self._write_to_dds_register(0x06, asf_word)
+        else:
+            register = channel_word - 1 + 0x0A
+            self._write_to_dds_register(register, asf_word)
 
     def set_frequency(self, frequency, channel=None, channel_word=0):
         """Sets a new frequency for a given channel.
 
         :frequency: float
-            The new frequency in Hz. Should not exceed `system_clock_frequency`.
+            The new frequency in Hz. Should not exceed
+            `system_clock_frequency`.
         :channel: int or seq
             Channel(s) for which the frequency should be set.
         :channel_word: int
-            Determines the channel_word to which the frequency is written. Each channel has 16
-            channel_words that can be used.
+            Determines the channel_word to which the frequency is written.
+            Each channel has 16 channel_words that can be used.
 
         """
 
         if channel is None:
             channel = self.channel
-        assert frequency <= self.system_clock_frequency, ("Frequency should not"
-                + " exceed system clock frequency! System clock frequency is {0}Hz".format(self.system_clock_frequency))
+        assert frequency <= self.system_clock_frequency, (
+            "Frequency should not  exceed system clock frequency! System " +
+            f"clock frequency is {self.system_clock_frequency} Hz"
+        )
 
-        assert channel_word < 16, ("Channel word cannot exceed 15, input was {0}".format(channel_word))
+        assert channel_word < 16, (
+            f"Channel word cannot exceed 15, input was {channel_word}"
+        )
 
         # select the chosen channels
         self._channel_select(channel)
 
         # calculate the fraction of the full frequency
         fraction = frequency/self.system_clock_frequency
-        fraction_bin = bin(int(round(fraction * (2**32 - 1)))).lstrip('0b') # full range are 32 bit
+        # full range are 32 bit
+        fraction_bin = bin(int(round(fraction * (2**32 - 1)))).lstrip('0b')
         if len(fraction_bin) < 32:
             fraction_bin = (32-len(fraction_bin)) * '0' + fraction_bin
-        closest_possible_value = (int(fraction_bin, base=2)/(2**32 -1) *
-                                    self.system_clock_frequency)
-        print('Setting frequency of channel {1}:{2} to closest possible value {0}MHz'.format(
-                                                        closest_possible_value/1e6, channel, channel_word))
+        closest_possible_value = (
+            int(fraction_bin, base=2)/(2**32 - 1) * self.system_clock_frequency
+        )
+        print(
+            f"Setting frequency of channel {channel}:" +
+            f"{channel_word} to closest possible value " +
+            f"{closest_possible_value/1e6}MHz"
+        )
 
         # set the frequency word in the frequency register
         frequency_word = ''.join(' 0' + b for b in fraction_bin)
         frequency_word = frequency_word[1:]
-        print(len(frequency_word))
-        print(frequency_word)
         if channel_word == 0:
             self._write_to_dds_register(0x04, frequency_word)
         else:
             register = channel_word - 1 + 0x0A
             self._write_to_dds_register(register, frequency_word)
-            
-
 
         # load and update I/O
         self._load_IO()
         if self.auto_update:
             self._update_IO()
-
-    def compute_ftw(self, frequency):
-        """Sets a new frequency for a given channel.
-
-        :frequency: float
-            The new frequency in Hz. Should not exceed `system_clock_frequency`.
-        
-        """
-
-        # calculate the fraction of the full frequency
-        fraction = frequency/self.system_clock_frequency
-        fraction_bin = bin(int(round(fraction * (2**32 - 1)))).lstrip('0b') # full range are 32 bit
-        if len(fraction_bin) < 32:
-            fraction_bin = (32-len(fraction_bin)) * '0' + fraction_bin
-        closest_possible_value = (int(fraction_bin, base=2)/(2**32 -1) *
-                                    self.system_clock_frequency)
-        #print('Setting frequency of channel {1}:{2} to closest possible value {0}MHz'.format(
-        #                                                closest_possible_value/1e6, channel, channel_word))
-
-        # set the frequency word in the frequency register
-        frequency_word = ''.join(' 0' + b for b in fraction_bin)
-        frequency_word = frequency_word[1:]
-        return frequency_word
-
-
-    def set_ftw(self, ftw, channel=None):
-        """Sets a new frequency tuning word for a given channel.
-
-        :ftw: string
-            The new 32 bit frequency tuning word as a string of length (32*3)-1.
-        :channel: int or seq
-            Channel(s) for which the frequency should be set.
-        
-        """
-
-        if channel is None:
-            channel = self.channel
-        
-        # select the chosen channels
-        self._channel_select(channel)
-
-        # set the frequency word in the frequency register
-        #print(ftw)
-        self._write_to_dds_register(0x04, ftw)
-        
-        # load and update I/O
-        self._load_IO()
-        if self.auto_update:
-            self._update_IO()
-
-    def set_ACR(self, ACR_values, channel=None):
-        """Sets a new output amplitude for a given channel.
-
-        :ACR_values: string
-            The new amplitude tuning word as a string of length (24*3)-1.
-        :channel: int or seq
-            Channel(s) for which the frequency should be set.
-        
-        """
-
-        if channel is None:
-            channel = self.channel
-        
-        # select the chosen channels
-        self._channel_select(channel)
-
-        # set the frequency word in the frequency register
-        #print(ACR_values)
-        self._write_to_dds_register(0x06, ACR_values)
-        
-        # load and update I/O
-        self._load_IO()
-        if self.auto_update:
-            self._update_IO()
-
-
 
     def set_phase(self, phase, channel=None):
         """Sets the phase offset for a given channel.
@@ -529,7 +577,8 @@ class AD9959(object):
         phase_fraction = phase/360
         phase_fraction_bin = bin(round(phase_fraction * 2**14)).lstrip('0b')
         if len(phase_fraction_bin) < 16:
-            phase_fraction_bin = (16 - len(phase_fraction_bin)) * '0' + phase_fraction_bin
+            phase_fraction_bin = (16 - len(phase_fraction_bin)) * '0' + \
+                phase_fraction_bin
 
         # construct the message for cypress chip
         phase_fraction_word = ''.join(' 0' + b for b in phase_fraction_bin)
@@ -553,7 +602,7 @@ class AD9959(object):
 
         # set the autoclear phase accumulator bit to 1 if old value was 0 and
         # vice versa
-        cfr[21] = (cfr[21] + 1) % 2 
+        cfr[21] = (cfr[21] + 1) % 2
         print(cfr)
 
         # construct the command for the cypress chip
@@ -569,12 +618,18 @@ class AD9959(object):
         if self.auto_update:
             self._update_IO()
 
-    def _enable_channel_modulation(self, channel=None, modulation_type='frequency', disable=False):
+    def _enable_channel_modulation(
+        self,
+        channel=None,
+        modulation_type='frequency',
+        disable=False
+    ):
         """Enables frequency modulation for selected channel(s).
         :channel: int or list
             channel ID or list of channel IDs that are selected
         :modulation_type: str
-            can be 'frequency', 'phase' or 'amplitude'. Only frequency is implemented so far.
+            can be 'frequency', 'phase' or 'amplitude'.
+            Only frequency is implemented so far.
         :disable: bool
             when True, modulation for this channel(s) is disabled.
 
@@ -583,13 +638,14 @@ class AD9959(object):
             channel = self.channel
         if np.issubdtype(type(channel), np.integer):
             channel = [channel]
-        
-        # we need to iterate over all channels, as the channel's individual function registers
-        # might have different content
+
+        # we need to iterate over all channels, as the channel's
+        # individual function registers might have different content
         for ch in channel:
             self._channel_select(ch)
 
-            # the modulation type of the channel is encoded in register 0x03[23:22].
+            # the modulation type of the channel is encoded
+            # in register 0x03[23:22].
             # 00 disables modulation, 10 is frequency modulation.
             if not disable:
                 if modulation_type == 'frequency':
@@ -603,7 +659,7 @@ class AD9959(object):
 
             # 2. replace the modulation type
             cfr_new_bin = modulation_type_bin + cfr_old_bin[2:]
-            
+
             cfr_word_new = ''.join(' 0' + b for b in cfr_new_bin)
             cfr_word_new = cfr_word_new[1:]
 
@@ -613,19 +669,24 @@ class AD9959(object):
             if self.auto_update:
                 self._update_IO()
 
-    def enable_modulation(self, level=2, active_channels=None, modulation_type='frequency'):
+    def enable_modulation(
+        self,
+        level=2,
+        active_channels=None,
+        modulation_type='frequency'
+    ):
         """This method chooses the modulation level and type.
 
         :level: int
-            Can be either 2, 4 or 16. The level determines the number of registers from
-            which active channels can choose.
+            Can be either 2, 4 or 16. The level determines the
+            number of registers from which active channels can choose.
         :active_channels: int or list
-            In 4- and 16-level modulation this determines which channels can be modulated.
-            Note that as there is only a 4 bit input (P0-P3), in 4-level modulation only 2 channels
+            In 4- and 16-level modulation this determines which
+            channels can be modulated. Note that as there is only
+            a 4 bit input (P0-P3), in 4-level modulation only 2 channels
             can be modulated, in 16-level modulation only one.
         :modulation_type: str
             'frequency', 'amplitude' or 'phase'
-
         """
         if active_channels is None:
             active_channels = self.channel
@@ -650,7 +711,10 @@ class AD9959(object):
         if level != 2:
             # mappings are taken from the manual of the AD9959
             if level == 4:
-                configurations = [[0,1], [0,2], [0,3], [1,2], [1,3], [2,3]]
+                configurations = [
+                    [0, 1], [0, 2], [0, 3],
+                    [1, 2], [1, 3], [2, 3]
+                ]
                 ppcs_combinations = [bin(i)[2:] for i in range(6)]
 
             elif level == 16:
@@ -664,21 +728,24 @@ class AD9959(object):
 
             # update PPC word
             fr_new_level = fr_new_level[:9] + PPC_bin + fr_new_level[12:]
-        
+
         # write the new FR1 word to the register
         fr_new_word = ''.join(' 0' + b for b in fr_new_level)
         fr_new_word = fr_new_word[1:]
-        #return fr_new_word, fr_new_level
+        # return fr_new_word, fr_new_level
 
         self._write_to_dds_register(0x01, fr_new_word)
-        
         self._load_IO()
         if self.auto_update:
             self._update_IO()
 
-        # we also make sure that the active channels are in correct modulation mode
+        # we also make sure that the active channels are in
+        # correct modulation mode
         for ch in active_channels:
-            self._enable_channel_modulation(channel=ch, modulation_type=modulation_type)
+            self._enable_channel_modulation(
+                channel=ch,
+                modulation_type=modulation_type
+            )
 
     def _enable_channel_linear_sweep(self, channels=None, disable=False):
         """TODO: Docstring for _enable_channel_linear_sweep.
@@ -693,7 +760,7 @@ class AD9959(object):
             channels = self.channel
         if np.issubdtype(type(channels), np.integer):
             channels = [channels]
-        
+
         # the modulation type of the channel is encoded in CFR 0x03[14].
         # 0 disables linear sweep, 1 enables
         if not disable:
@@ -701,8 +768,8 @@ class AD9959(object):
         else:
             ls_enable_bin = '0'
 
-        # we need to iterate over all channels, as the channel's individual function registers
-        # might have different content
+        # we need to iterate over all channels, as the channel's individual
+        # function registers might have different content
         for ch in channels:
             self._channel_select(ch)
 
@@ -712,9 +779,9 @@ class AD9959(object):
 
             # 2. replace the CFR by one with updated LS enable bit
             cfr_new_bin = cfr_old_bin[:9] + ls_enable_bin + cfr_old_bin[10:]
-            
-            cfr_word_new = ''.join(' 0' + b for b in cfr_new_bin) # translate to bytes
-            cfr_word_new = cfr_word_new[1:] # crop the first white space
+            # translate to bytes
+            cfr_word_new = ''.join(' 0' + b for b in cfr_new_bin)
+            cfr_word_new = cfr_word_new[1:]  # crop the first white space
 
             self._write_to_dds_register(0x03, cfr_word_new)
 
@@ -731,22 +798,34 @@ class AD9959(object):
 
         return
 
-    def configure_linear_sweep(self, channels=None, rsrr=0, fsrr=0, rdw=0, fdw=0, disable=False):
-        """Configure the linear frequency sweep parameters for selected channels.
+    def configure_linear_sweep(
+        self,
+        channels=None,
+        rsrr=0,
+        fsrr=0,
+        rdw=0,
+        fdw=0,
+        disable=False
+    ):
+        """Configure the linear frequency sweep parameters for
+        selected channels.
 
-        The linear sweep ramp rate (lsrr) specifies the timestep of the rising ramp, falling sweep ramp rate
-        (fsrr) works accordingly.
-        Rising delta word specifies the rising frequency stepsize, falling delta works respectively.
+        The linear sweep ramp rate (lsrr) specifies the timestep of the rising
+        ramp, falling sweep ramp rate (fsrr) works accordingly.
+        Rising delta word specifies the rising frequency stepsize,
+        falling delta works respectively.
 
         :channels: int or list
             Channel ID(s) for channels to configure.
         :lsrr: float
-            Timestep (in seconds) of the rising sweep. Can be 1-256 times the inverse SYNC_CLK frequency.
-            SYNC_CLK frequency is the SYSCLK divided by 4.
+            Timestep (in seconds) of the rising sweep. Can be 1-256 times the
+            inverse SYNC_CLK frequency. SYNC_CLK frequency is the SYSCLK
+            divided by 4.
         :fsrr: float
             Same as :lsrr:
         :rdw: float
-            Frequency step (in Hertz) of the rising sweep. Can be chosen similar to the channel frequency.
+            Frequency step (in Hertz) of the rising sweep. Can be chosen
+            similar to the channel frequency.
         :fdw: float
             Same as :rdw:
         :disable: bool
@@ -765,8 +844,8 @@ class AD9959(object):
         if disable:
             return
 
-        # All linear sweep properties are in individual channel registers, so we
-        # can write all channels in one go
+        # All linear sweep properties are in individual channel registers,
+        # so we can write all channels in one go
         self._channel_select(channels)
 
         ######################################################
@@ -780,28 +859,37 @@ class AD9959(object):
 
             # 1.2 Check for correct bounds
             if fraction_bin < 1:
-                print('Ramp rate below lower limit, choosing lowest possible value.')
+                print(
+                    'Ramp rate below lower limit, ' +
+                    'choosing lowest possible value.'
+                )
                 fraction_bin = 1
             elif fraction_bin > 256:
-                print('Ramp rate above upper limit, choosing highest possible value.')
+                print(
+                    'Ramp rate above upper limit, ' +
+                    'choosing highest possible value.'
+                )
                 fraction_bin = 256
 
             # align the fraction_bin with binary representation
-            print('Setting {0} sweep ramp rate to {1:1.3e} s'.format(rr_name[i], fraction_bin*rr_time_step))
+            print(
+                f'Setting {rr_name[i]} sweep ramp rate ' +
+                f'to {fraction_bin*rr_time_step:1.3e} s'
+            )
             fraction_bin -= 1
             rrw_bin = bin(fraction_bin)[2:]
             if len(rrw_bin) < 8:
                 rrw_bin = (8-len(rrw_bin))*'0' + rrw_bin
             ramp_rate_word += rrw_bin
             print('Len RRW', len(ramp_rate_word))
-        
+
         # write the new ramp rate word to the RR register
         ramp_rate_word = ''.join(' 0' + b for b in ramp_rate_word)
         ramp_rate_word = ramp_rate_word[1:]
         print('RRW: {0}'.format(ramp_rate_word), len(ramp_rate_word))
         self._write_to_dds_register(0x07, ramp_rate_word)
         print(self._read_from_register(0x07, 16))
-        
+
         ###############################################
         # 2. Set the falling and rising delta words.
         # calculate the fraction of the full frequency
@@ -809,23 +897,28 @@ class AD9959(object):
         delta_words = [fdw, rdw]
         for i, dw in enumerate(delta_words):
             fraction = dw/self.system_clock_frequency
-            fraction_bin = bin(int(round(fraction * (2**32 - 1)))).lstrip('0b') # full range are 32 bit
+            fraction_bin = bin(
+                int(round(fraction * (2**32 - 1)))
+            ).lstrip('0b')  # full range are 32 bit
             if len(fraction_bin) < 32:
                 fraction_bin = (32-len(fraction_bin)) * '0' + fraction_bin
-            closest_possible_value = (int(fraction_bin, base=2)/(2**32 -1) *
-                                        self.system_clock_frequency)
-            print('Setting {2} delta word of channel {1} to closest possible value {0}MHz'.format(
-                                                            closest_possible_value/1e6, channels, rr_name[i]))
+            closest_possible_value = (
+                int(fraction_bin, base=2)/(2**32 - 1) *
+                self.system_clock_frequency
+            )
+            print(
+                f'Setting {rr_name[i]} delta word of channel ' +
+                f'{channels} to closest possible value ' +
+                f'{closest_possible_value/1e6} MHz'
+            )
 
             # set the frequency word in the frequency register
             frequency_word = ''.join(' 0' + b for b in fraction_bin)
             frequency_word = frequency_word[1:]
-            self._write_to_dds_register(delta_word_registers[i], frequency_word)
+            self._write_to_dds_register(
+                delta_word_registers[i],
+                frequency_word
+            )
             print(frequency_word)
             print(self._read_from_register(delta_word_registers[i], 32))
         return
-
-
-if __name__ == "__main__":
-    evalboard = AD9959(port_numbers=(8, 1, 1, 3), bus_number=1)
-    evalboard.set_frequency(20e6, channel=[0, 1])

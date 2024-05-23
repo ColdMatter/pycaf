@@ -4,3 +4,4 @@ from .visualizations import PatternVisualizer
 from .live_mot import LiveMOT
 from .mot_auto_tuner_wml import MOTAutoTunerWML
 from .visualizations import Scope
+from .visualizations import Probe

@@ -35,17 +35,18 @@ class LiveMOTBGSubtracted(Experiment):
         interval: Union[int, float],
         script: str,
         parameter: str,
-        value: Union[int, float],
-        timegap_in_ms: int = 1000,
+        on_value: Union[int, float],
+        off_value: Union[int, float],
+        iteration: int = 5,
         color_max: int = 50
     ) -> None:
         super().__init__(config_path, interval)
-        super().connect()
         self.image_dirpath = self.config["temp_image_path"]
         self.script = script
         self.parameter = parameter
-        self.value = value
-        self.timegap_in_ms = timegap_in_ms
+        self.on_value = on_value
+        self.off_value = off_value
+        self.iteration = iteration
         self.color_max = color_max
         self.old_color_max = color_max
         self.image = None
@@ -125,7 +126,13 @@ class LiveMOTBGSubtracted(Experiment):
     def _call_motmaster_and_analyse_image(
         self
     ) -> None:
-        self.motmaster_single_run(self.script, self.parameter, self.value)
+        for _ in range(self.iteration):
+            self.motmaster_single_run(
+                self.script, self.parameter, self.on_value
+            )
+            self.motmaster_single_run(
+                self.script, self.parameter, self.off_value
+            )
         try:
             images = self.read_images()
         except Exception as e:
@@ -135,7 +142,8 @@ class LiveMOTBGSubtracted(Experiment):
         except Exception as e:
             print(f"Exception {e} occured in during deleting images")
         if len(images) >= 2:
-            self.image = images[0::2, :, :] - images[1::2, :, :]
+            _image = images[0::2, :, :] - images[1::2, :, :]
+            self.image = np.sum(_image, axis=0)
         time.sleep(0.1)
         return None
 
@@ -143,17 +151,19 @@ class LiveMOTBGSubtracted(Experiment):
 if __name__ == "__main__":
     config_path = "C:\\ControlPrograms\\pycaf\\config_bec.json"
     interval = 0.1
-    script = "MOTBasicMultiTrigger"
-    parameter = "CameraTriggerStart"
-    value = 3000
-    timegap_in_ms = 20
+    script = "MOTBasic"
+    parameter = "yagONorOFF"
+    on_value = 10.0
+    off_value = 1.0
+    iteration = 1
     live_mot = LiveMOTBGSubtracted(
         config_path=config_path,
         interval=interval,
         script=script,
         parameter=parameter,
-        value=value,
-        timegap_in_ms=timegap_in_ms,
+        on_value=on_value,
+        off_value=off_value,
+        iteration=iteration,
         color_max=100
     )
     plt.show()

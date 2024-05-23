@@ -32,22 +32,27 @@ def fit_linear(
     s_trial = (y[-1]-y[0])/(x[-1]-x[0])
     i_trial = np.max(y) if s_trial < 0 else np.min(y)
     p0 = [s_trial, i_trial]
-    popt, _ = curve_fit(linear, x, y, p0=p0, sigma=err)
-    x_fine = np.linspace(np.min(x), np.max(x), n_fine)
-    y_fine = linear(x_fine, *popt)
-    func_str = "\n y = m*x+c"
-    args_str = f"\n m: {popt[0]:e}\n c: {popt[1]:e}"
-    fit = LinearFit(
-        func_str=func_str,
-        args_str=args_str,
-        x=x,
-        y=y,
-        err=err,
-        x_fine=x_fine,
-        y_fine=y_fine,
-        slope=popt[0],
-        intercept=popt[1]
-    )
+    fit, popt = None, None
+    try:
+        popt, _ = curve_fit(linear, x, y, p0=p0, sigma=err)
+    except Exception as e:
+        print(f"Error {e} occured during fitting")
+    if popt is not None:
+        x_fine = np.linspace(np.min(x), np.max(x), n_fine)
+        y_fine = linear(x_fine, *popt)
+        func_str = "\n y = m*x+c"
+        args_str = f"\n m: {popt[0]:e}\n c: {popt[1]:e}"
+        fit = LinearFit(
+            func_str=func_str,
+            args_str=args_str,
+            x=x,
+            y=y,
+            err=err,
+            x_fine=x_fine,
+            y_fine=y_fine,
+            slope=popt[0],
+            intercept=popt[1]
+        )
     return fit
 
 
@@ -74,25 +79,30 @@ def fit_gaussian_with_offset(
     halfmax_y = np.max(y)/2.0
     s_trial = np.abs(x[0]-x[1])*len(y[y > halfmax_y])/2.0
     p0 = [a_trial, c_trial, s_trial, o_trial]
-    popt, _ = curve_fit(gaussian_with_offset, x, y, p0=p0, sigma=err)
-    x_fine = np.linspace(np.min(x), np.max(x), n_fine)
-    y_fine = gaussian_with_offset(x_fine, *popt)
-    func_str = "\n y = a*exp(-(x-xc)**2/(2*s**2))+o"
-    args_str = f"\n a: {popt[0]:e}\n xc: {popt[1]:e}" + \
-        f"\n s: {np.abs(popt[2]):e}\n o: {popt[3]:e}"
-    fit = GaussianFitWithOffset(
-        func_str=func_str,
-        args_str=args_str,
-        x=x,
-        y=y,
-        err=err,
-        x_fine=x_fine,
-        y_fine=y_fine,
-        amplitude=popt[0],
-        centre=popt[1],
-        width=popt[2],
-        offset=popt[3]
-    )
+    fit, popt = None, None
+    try:
+        popt, _ = curve_fit(gaussian_with_offset, x, y, p0=p0, sigma=err)
+    except Exception as e:
+        print(f"Error {e} occured during fitting")
+    if popt is not None:
+        x_fine = np.linspace(np.min(x), np.max(x), n_fine)
+        y_fine = gaussian_with_offset(x_fine, *popt)
+        func_str = "\n y = a*exp(-(x-xc)**2/(2*s**2))+o"
+        args_str = f"\n a: {popt[0]:e}\n xc: {popt[1]:e}" + \
+            f"\n s: {np.abs(popt[2]):e}\n o: {popt[3]:e}"
+        fit = GaussianFitWithOffset(
+            func_str=func_str,
+            args_str=args_str,
+            x=x,
+            y=y,
+            err=err,
+            x_fine=x_fine,
+            y_fine=y_fine,
+            amplitude=popt[0],
+            centre=popt[1],
+            width=popt[2],
+            offset=popt[3]
+        )
     return fit
 
 
@@ -117,23 +127,29 @@ def fit_gaussian_without_offset(
     halfmax_y = np.max(y)/2.0
     w_trial = np.abs(x[0]-x[1])*len(y[y > halfmax_y])/2.0
     p0 = [a_trial, c_trial, w_trial]
-    popt, _ = curve_fit(gaussian_without_offset, x, y, p0=p0, sigma=err)
-    x_fine = np.linspace(np.min(x), np.max(x), n_fine)
-    y_fine = gaussian_without_offset(x_fine, *popt)
-    func_str = "\n y = a*exp(-(x-xc)**2/(2*s**2))"
-    args_str = f"\n a: {popt[0]:e}\n xc: {popt[1]:e}\n s: {np.abs(popt[2]):e}"
-    fit = GaussianFitWithoutOffset(
-        func_str=func_str,
-        args_str=args_str,
-        x=x,
-        y=y,
-        err=err,
-        x_fine=x_fine,
-        y_fine=y_fine,
-        amplitude=popt[0],
-        centre=popt[1],
-        width=popt[2]
-    )
+    fit, popt = None, None
+    try:
+        popt, _ = curve_fit(gaussian_without_offset, x, y, p0=p0, sigma=err)
+    except Exception as e:
+        print(f"Error {e} occured during fitting")
+    if popt is not None:
+        x_fine = np.linspace(np.min(x), np.max(x), n_fine)
+        y_fine = gaussian_without_offset(x_fine, *popt)
+        func_str = "\n y = a*exp(-(x-xc)**2/(2*s**2))"
+        args_str = \
+            f"\n a: {popt[0]:e}\n xc: {popt[1]:e}\n s: {np.abs(popt[2]):e}"
+        fit = GaussianFitWithoutOffset(
+            func_str=func_str,
+            args_str=args_str,
+            x=x,
+            y=y,
+            err=err,
+            x_fine=x_fine,
+            y_fine=y_fine,
+            amplitude=popt[0],
+            centre=popt[1],
+            width=popt[2]
+        )
     return fit
 
 
@@ -280,24 +296,29 @@ def fit_exponential_without_offset(
     c_trial = x[np.argmax(y)]
     r_trial = np.nanmean((c_trial-x)/np.log(y/a_trial))
     p0 = [a_trial, c_trial, r_trial]
-    popt, _ = curve_fit(exponential_without_offset, x, y, p0=p0, sigma=err)
-    x_fine = np.linspace(np.min(x), np.max(x), n_fine)
-    y_fine = exponential_without_offset(x_fine, *popt)
-    func_str = "\n y = a*exp(-(x-xc)/r)"
-    args_str = f"\n a: {popt[0]:e}\n xc: {popt[1]:e}" + \
-        f"\n r: {popt[2]:e}"
-    fit = ExponentialFitWithoutOffset(
-        func_str=func_str,
-        args_str=args_str,
-        x=x,
-        y=y,
-        err=err,
-        x_fine=x_fine,
-        y_fine=y_fine,
-        amplitude=popt[0],
-        centre=popt[1],
-        rate=popt[2]
-    )
+    fit, popt = None, None
+    try:
+        popt, _ = curve_fit(exponential_without_offset, x, y, p0=p0, sigma=err)
+    except Exception as e:
+        print(f"Error {e} occured during fitting")
+    if popt is not None:
+        x_fine = np.linspace(np.min(x), np.max(x), n_fine)
+        y_fine = exponential_without_offset(x_fine, *popt)
+        func_str = "\n y = a*exp(-(x-xc)/r)"
+        args_str = f"\n a: {popt[0]:e}\n xc: {popt[1]:e}" + \
+            f"\n r: {popt[2]:e}"
+        fit = ExponentialFitWithoutOffset(
+            func_str=func_str,
+            args_str=args_str,
+            x=x,
+            y=y,
+            err=err,
+            x_fine=x_fine,
+            y_fine=y_fine,
+            amplitude=popt[0],
+            centre=popt[1],
+            rate=popt[2]
+        )
     return fit
 
 
@@ -322,25 +343,30 @@ def fit_exponential_with_offset(
     r_trial = np.nanmean((c_trial-x)/np.log(y/a_trial))
     o_trial = np.min(y)
     p0 = [a_trial, c_trial, r_trial, o_trial]
-    popt, _ = curve_fit(exponential_with_offset, x, y, p0=p0, sigma=err)
-    x_fine = np.linspace(np.min(x), np.max(x), n_fine)
-    y_fine = exponential_with_offset(x_fine, *popt)
-    func_str = "\n y = a*exp(-(x-xc)/r)+o"
-    args_str = f"\n a: {popt[0]:e}\n xc: {popt[1]:e}" + \
-        f"\n r: {popt[2]:e}\n o: {popt[3]:e}"
-    fit = ExponentialFitWithOffset(
-        func_str=func_str,
-        args_str=args_str,
-        x=x,
-        y=y,
-        err=err,
-        x_fine=x_fine,
-        y_fine=y_fine,
-        amplitude=popt[0],
-        centre=popt[1],
-        rate=popt[2],
-        offset=popt[3]
-    )
+    fit, popt = None, None
+    try:
+        popt, _ = curve_fit(exponential_with_offset, x, y, p0=p0, sigma=err)
+    except Exception as e:
+        print(f"Error {e} occured during fitting")
+    if popt is not None:
+        x_fine = np.linspace(np.min(x), np.max(x), n_fine)
+        y_fine = exponential_with_offset(x_fine, *popt)
+        func_str = "\n y = a*exp(-(x-xc)/r)+o"
+        args_str = f"\n a: {popt[0]:e}\n xc: {popt[1]:e}" + \
+            f"\n r: {popt[2]:e}\n o: {popt[3]:e}"
+        fit = ExponentialFitWithOffset(
+            func_str=func_str,
+            args_str=args_str,
+            x=x,
+            y=y,
+            err=err,
+            x_fine=x_fine,
+            y_fine=y_fine,
+            amplitude=popt[0],
+            centre=popt[1],
+            rate=popt[2],
+            offset=popt[3]
+        )
     return fit
 
 
@@ -363,24 +389,29 @@ def fit_lorentzian_without_offset(
     c_trial = x[np.argmax(y)]
     r_trial = np.nanmean(x/(np.sqrt(a_trial/y-1)))
     p0 = [a_trial, c_trial, r_trial]
-    popt, _ = curve_fit(lorentzian_without_offset, x, y, p0=p0, sigma=err)
-    x_fine = np.linspace(np.min(x), np.max(x), n_fine)
-    y_fine = lorentzian_without_offset(x_fine, *popt)
-    func_str = "\n y = a*(0.5*w**2/((x-c)**2+(0.5*w**2)))"
-    args_str = f"\n a: {popt[0]:e}\n xc: {popt[1]:e}" + \
-        f"\n w: {np.abs(popt[2]):e}"
-    fit = LorentzianFitWithoutOffset(
-        func_str=func_str,
-        args_str=args_str,
-        x=x,
-        y=y,
-        err=err,
-        x_fine=x_fine,
-        y_fine=y_fine,
-        amplitude=popt[0],
-        centre=popt[1],
-        width=popt[2]
-    )
+    fit, popt = None, None
+    try:
+        popt, _ = curve_fit(lorentzian_without_offset, x, y, p0=p0, sigma=err)
+    except Exception as e:
+        print(f"Error {e} occured during fitting")
+    if popt is not None:
+        x_fine = np.linspace(np.min(x), np.max(x), n_fine)
+        y_fine = lorentzian_without_offset(x_fine, *popt)
+        func_str = "\n y = a*(0.5*w**2/((x-c)**2+(0.5*w**2)))"
+        args_str = f"\n a: {popt[0]:e}\n xc: {popt[1]:e}" + \
+            f"\n w: {np.abs(popt[2]):e}"
+        fit = LorentzianFitWithoutOffset(
+            func_str=func_str,
+            args_str=args_str,
+            x=x,
+            y=y,
+            err=err,
+            x_fine=x_fine,
+            y_fine=y_fine,
+            amplitude=popt[0],
+            centre=popt[1],
+            width=popt[2]
+        )
     return fit
 
 
@@ -405,23 +436,28 @@ def fit_lorentzian_with_offset(
     o_trial = np.min(y)
     r_trial = np.nanmean(x/(np.sqrt(a_trial/(y-o_trial)-1)))
     p0 = [a_trial, c_trial, r_trial, o_trial]
-    popt, _ = curve_fit(lorentzian_with_offset, x, y, p0=p0, sigma=err)
-    x_fine = np.linspace(np.min(x), np.max(x), n_fine)
-    y_fine = lorentzian_with_offset(x_fine, *popt)
-    func_str = "\n y = a*(0.5*w**2/((x-xc)**2+(0.5*w**2)))+o"
-    args_str = f"\n a: {popt[0]:e}\n xc: {popt[1]:e}" + \
-        f"\n w: {np.abs(popt[2]):e}\n o: {popt[3]:e}"
-    fit = LorentzianFitWithOffset(
-        func_str=func_str,
-        args_str=args_str,
-        x=x,
-        y=y,
-        err=err,
-        x_fine=x_fine,
-        y_fine=y_fine,
-        amplitude=popt[0],
-        centre=popt[1],
-        width=popt[2],
-        offset=popt[3]
-    )
+    fit, popt = None, None
+    try:
+        popt, _ = curve_fit(lorentzian_with_offset, x, y, p0=p0, sigma=err)
+    except Exception as e:
+        print(f"Error {e} occured during fitting")
+    if popt is not None:
+        x_fine = np.linspace(np.min(x), np.max(x), n_fine)
+        y_fine = lorentzian_with_offset(x_fine, *popt)
+        func_str = "\n y = a*(0.5*w**2/((x-xc)**2+(0.5*w**2)))+o"
+        args_str = f"\n a: {popt[0]:e}\n xc: {popt[1]:e}" + \
+            f"\n w: {np.abs(popt[2]):e}\n o: {popt[3]:e}"
+        fit = LorentzianFitWithOffset(
+            func_str=func_str,
+            args_str=args_str,
+            x=x,
+            y=y,
+            err=err,
+            x_fine=x_fine,
+            y_fine=y_fine,
+            amplitude=popt[0],
+            centre=popt[1],
+            width=popt[2],
+            offset=popt[3]
+        )
     return fit

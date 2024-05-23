@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Tuple
 from zipfile import ZipFile
 from PIL import Image
 from pathlib import Path
+import glob
 import re
 import os
 import json
@@ -17,6 +18,22 @@ from .curve_fitting import (
     fit_gaussian_with_offset,
     fit_gaussian_with_offset_2D
 )
+
+
+month_dict: Dict[int, str] = {
+    1: "01Jan",
+    2: "02Feb",
+    3: "03Mar",
+    4: "04Apr",
+    5: "05May",
+    6: "06Jun",
+    7: "07Jul",
+    8: "08Aug",
+    9: "09Sep",
+    10: "10Oct",
+    11: "11Nov",
+    12: "12Dec"
+}
 
 
 def atoi(text):
@@ -36,21 +53,6 @@ def get_zip_archive(
     prefix: str,
     mode: str = "r"
 ) -> ZipFile:
-    month_dict: Dict[int, str] = \
-        {
-            1: "01Jan",
-            2: "02Feb",
-            3: "03Mar",
-            4: "04Apr",
-            5: "05May",
-            6: "06Jun",
-            7: "07Jul",
-            8: "08Aug",
-            9: "09Sep",
-            10: "10Oct",
-            11: "11Nov",
-            12: "12Dec"
-        }
     day_filled: str = str(day).zfill(2)
     year_filled: str = str(year)[-2:]
     file_filled: str = str(file_no).zfill(3)
@@ -63,6 +65,63 @@ def get_zip_archive(
         f"{prefix}{day_filled}{month_filled}{year_filled}00_{file_filled}.zip"
     )
     return ZipFile(filepath, mode=mode)
+
+
+def get_next_json_metadata_path(
+    root: str,
+    year: int,
+    month: int,
+    day: int,
+    n_state: int,
+    prefix: str,
+) -> Path:
+    rootpath = Path(root)
+    day_filled: str = str(day).zfill(2)
+    year_filled: str = str(year)[-2:]
+    month_filled: str = month_dict[month][-3:]
+    dirpath = rootpath.joinpath(
+        str(year),
+        month_dict[month],
+        day_filled
+    )
+    file_no = len(glob.glob(dirpath + '/*.zip'))
+    file_filled_start: str = str(file_no).zfill(3)
+    file_filled_stop: str = str(file_no+n_state).zfill(3)
+    filepath = rootpath.joinpath(
+        str(year),
+        month_dict[month],
+        day_filled,
+        f"{prefix}{day_filled}{month_filled}{year_filled}00" +
+        f"_{file_filled_start}_{file_filled_stop}_metadata.json"
+    )
+    return filepath
+
+
+def get_json_metadata(
+    root: str,
+    year: int,
+    month: int,
+    day: int,
+    file_start: int,
+    file_stop: int,
+    prefix: str,
+) -> Dict[str, Any]:
+    rootpath = Path(root)
+    day_filled: str = str(day).zfill(2)
+    year_filled: str = str(year)[-2:]
+    month_filled: str = month_dict[month][-3:]
+    file_filled_start: str = str(file_start).zfill(3)
+    file_filled_stop: str = str(file_stop).zfill(3)
+    filepath = rootpath.joinpath(
+        str(year),
+        month_dict[month],
+        day_filled,
+        f"{prefix}{day_filled}{month_filled}{year_filled}00" +
+        f"_{file_filled_start}_{file_filled_stop}_metadata.json"
+    )
+    with open(filepath, "r") as f:
+        meta_data = json.load(f)
+    return meta_data
 
 
 def create_file_list(
@@ -294,6 +353,21 @@ def read_parameters_from_zip(
     return parameters
 
 
+def read_frequencies_from_zip(
+    archive: ZipFile,
+    close: bool = True
+) -> Dict[str, Any]:
+    frequencies = {}
+    for filename in archive.namelist():
+        if filename[-17:] == "wavemeterlock.txt":
+            with archive.open(filename) as f:
+                line = f.readline()
+                frequencies = json.loads(line)
+    if close:
+        archive.close()
+    return frequencies
+
+
 def read_time_of_flight_from_zip(
     archive: ZipFile,
     close: bool = True
@@ -312,6 +386,8 @@ def read_time_of_flight_from_zip(
                 )
     if len(tofs) > 1:
         tofs = np.array(tofs, dtype=float).mean(axis=0)
+    else:
+        tofs = np.array(tofs, dtype=float)
     if close:
         archive.close()
     return sampling_rate, tofs

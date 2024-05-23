@@ -1,7 +1,12 @@
-from typing import Any, Callable, Dict, List, Tuple, Union
+from typing import Any, Callable, Dict, List, Union, Tuple
+from itertools import product
+from rich.progress import track
+import datetime
+import numpy as np
 import pathlib
 import json
 import sys
+import time
 
 # NOTE: these imports will only work with the pythonnet package
 try:
@@ -12,17 +17,143 @@ try:
 except Exception as e:
     print(f"Error: {e} encountered, probably no pythonnet")
 
-
 from pycaf.modules import (
-    single_run,
-    scan_parameter,
-    scan_parameters,
-    get_laser_set_points,
-    scan_laser_set_points,
-    scan_laser_set_points_with_motmaster_values,
-    scan_laser_set_points_with_motmaster_multiple_parameters,
     PicoMotor8742
 )
+
+
+def get_laser_frequencies(
+    WavemeterLock,
+    lasers: List[str]
+) -> List[str]:
+    _lasers = {}
+    for laser in lasers:
+        set_point = WavemeterLock.getSlaveFrequency(laser)
+        _lasers[laser] = set_point
+        print(f"Frequency of {laser}: {set_point:.6f} THz")
+    return _lasers
+
+
+def save_laser_frequencies(
+    WavemeterLock,
+    lasers: List[str],
+    dirpath: str
+) -> None:
+    filename = "wavemeterlock.txt"
+    filepath = pathlib.Path(dirpath).joinpath(filename)
+    freq = {}
+    for laser in lasers:
+        freq[f"{laser}_set"] = \
+            int(np.ceil(float(WavemeterLock.getSetFrequency(laser))*1e6))/1e6
+        freq[f"{laser}_act"] = \
+            int(np.ceil(float(WavemeterLock.getSlaveFrequency(laser))*1e6))/1e6
+    with open(filepath, "w") as f:
+        f.write(json.dumps(freq))
+    return None
+
+
+def move_laser_frequency(
+    WavemeterLock,
+    laser: str,
+    final_set_point: float
+) -> None:
+    WavemeterLock.setSlaveFrequency(
+        laser,
+        int(np.ceil(float(final_set_point)*1e6))/1e6
+    )
+    return None
+
+
+def run(
+    Dictionary,
+    String,
+    Object,
+    WavemeterLock,
+    MOTMaster,
+    lasers: List[str],
+    root: pathlib.Path,
+    wavemeter_info_dirpath: pathlib.Path,
+    script: str,
+    state_dims: List[str],
+    state_value: List[Union[int, float]],
+    pre_callback: Callable = None,
+    post_callback: Callable = None,
+    interval: float = 0.01,
+    **kwargs
+) -> None:
+    _dictionary = Dictionary[String, Object]()
+    path = str(root.joinpath(f"{script}.cs"))
+    try:
+        MOTMaster.SetScriptPath(path)
+    except Exception as e:
+        print(f"Error: {e} encountered")
+    for i, state in enumerate(state_dims):
+        if state[0:9] == "wavemeter":
+            move_laser_frequency(
+                WavemeterLock,
+                state[10:],
+                state_value[i]
+            )
+        if state[0:9] == "motmaster":
+            _dictionary[state[10:]] = state_value[i]
+    save_laser_frequencies(
+        WavemeterLock,
+        lasers,
+        wavemeter_info_dirpath
+    )
+    if pre_callback is not None:
+        pre_callback(state_dims, state_value, **kwargs)
+    try:
+        MOTMaster.Go(_dictionary)
+    except Exception as e:
+        print(f"Error: {e} encountered")
+    if post_callback is not None:
+        post_callback(state_dims, state_value, **kwargs)
+    time.sleep(interval)
+    return None
+
+
+def scan(
+    Dictionary,
+    String,
+    Object,
+    WavemeterLock,
+    MOTMaster,
+    lasers: List[str],
+    root: pathlib.Path,
+    wavemeter_info_dirpath: pathlib.Path,
+    script: str,
+    motmaster_parameters_with_values: Dict[str, List[Union[int, float]]],
+    lasers_with_frequencies: Dict[str, List[float]] = None,
+    n_iter: int = 1,
+    pre_callback: Callable = None,
+    post_callback: Callable = None,
+    interval: float = 0.01,
+    **kwargs
+) -> None:
+    state_dict = {}
+    if lasers_with_frequencies is not None:
+        for key, value in lasers_with_frequencies.items():
+            state_dict[f"wavemeter_{key}"] = value
+    for key, value in motmaster_parameters_with_values.items():
+        state_dict[f"motmaster_{key}"] = value
+    state_dims = list(state_dict.keys())
+    _state_space = []
+    for item in product(*list(state_dict.values())):
+        _state_space.append(item)
+    state_space = []
+    for _ in range(n_iter):
+        state_space.extend(_state_space)
+    for state_value in track(state_space):
+        run(
+            Dictionary, String, Object,
+            WavemeterLock, MOTMaster,
+            lasers, root, wavemeter_info_dirpath, script,
+            state_dims, state_value,
+            pre_callback, post_callback, interval,
+            **kwargs
+        )
+    return None
 
 
 class Experiment():
@@ -38,6 +169,9 @@ class Experiment():
         self.edmsuite_modules = self.config["edmsuite_modules"]
         self.edmsuite_dlls = self.config["edmsuite_dlls"]
         self.default_remote_path_id = self.config["default_remote_path_id"]
+        self.wavemeter_info_path = self.config["temp_wavemeter_info_path"]
+        self.today = datetime.date.today()
+        self.data_prefix = self.config["data_prefix"]
         for path in self.edmsuite_dlls.values():
             self._add_ref(path)
         for key, info in self.edmsuite_modules.items():
@@ -90,155 +224,40 @@ class Experiment():
     ) -> None:
         return None
 
-    def get_remote_path_id(
+    def get_remote_path_ids(
         self,
         **kwargs
-    ) -> str:
-        if "remote_path_id" in kwargs:
-            remote_path_id = kwargs["remote_path_id"]
+    ) -> Tuple[str, str]:
+        if "motmaster_remote_path_id" in kwargs:
+            motmaster_remote_path_id = kwargs["motmaster_remote_path_id"]
         else:
-            remote_path_id = self.default_remote_path_id
-        return remote_path_id
+            motmaster_remote_path_id = self.default_remote_path_id
+        if "wavemeter_remote_path_id" in kwargs:
+            wavemeter_remote_path_id = kwargs["wavemeter_remote_path_id"]
+        else:
+            wavemeter_remote_path_id = self.default_remote_path_id
+        return motmaster_remote_path_id, wavemeter_remote_path_id
 
-    def motmaster_single_run(
+    def scan(
         self,
         script: str,
-        parameter: str,
-        value: Union[int, float],
+        motmaster_parameters_with_values: Dict[str, List[Union[int, float]]],
+        lasers_with_frequencies: Dict[str, List[float]] = None,
+        n_iter: int = 1,
         pre_callback: Callable = None,
         post_callback: Callable = None,
         **kwargs
     ) -> None:
-        remote_path_id = self.get_remote_path_id(**kwargs)
-        _motmaster = self.__dict__[f"MOTMaster_{remote_path_id}"]
-        single_run(
-            Dictionary, String, Object,
-            _motmaster, self.root, script,
-            parameter, value, pre_callback, post_callback,
-            self.interval
-        )
-        return None
-
-    def motmaster_scan_parameter(
-        self,
-        script: str,
-        parameter: str,
-        values: List[Union[int, float]],
-        pre_callback: Callable = None,
-        post_callback: Callable = None,
-        **kwargs
-    ) -> None:
-        remote_path_id = self.get_remote_path_id(**kwargs)
-        _motmaster = self.__dict__[f"MOTMaster_{remote_path_id}"]
-        scan_parameter(
-            Dictionary, String, Object,
-            _motmaster, self.root, script,
-            parameter, values, pre_callback, post_callback,
-            self.interval
-        )
-        self.wavemeter_get_laser_set_points()
-        return None
-
-    def motmaster_scan_parameters(
-        self,
-        script: str,
-        parameters: List[str],
-        values: List[Tuple[Any]],
-        pre_callback: Callable = None,
-        post_callback: Callable = None,
-        **kwargs
-    ) -> None:
-        remote_path_id = self.get_remote_path_id(**kwargs)
-        _motmaster = self.__dict__[f"MOTMaster_{remote_path_id}"]
-        scan_parameters(
-            Dictionary, String, Object,
-            _motmaster, self.root, script,
-            parameters, values, pre_callback, post_callback,
-            self.interval
-        )
-        return None
-
-    def wavemeter_get_laser_set_points(
-        self,
-        **kwargs
-    ) -> Dict[str, float]:
-        remote_path_id = self.get_remote_path_id(**kwargs)
-        _wavemeterlock = self.__dict__[f"WavemeterLock_{remote_path_id}"]
+        mmrp_id, wmrp_id = self.get_remote_path_ids(**kwargs)
+        _motmaster = self.__dict__[f"MOTMaster_{mmrp_id}"]
+        _wavemeterlock = self.__dict__[f"WavemeterLock_{wmrp_id}"]
         _lasers = self.config["edmsuite_modules"]["WavemeterLock"]["lasers"]
-        get_laser_set_points(
-            _wavemeterlock,
-            _lasers[remote_path_id]
-        )
-        return None
-
-    def wavemeter_scan_laser_set_points(
-        self,
-        script: str,
-        laser: str,
-        values: List[Tuple[Any]],
-        motmaster_parameter: str = None,
-        motmaster_value: Union[int, float] = None,
-        pre_callback: Callable = None,
-        post_callback: Callable = None,
-        **kwargs
-    ) -> None:
-        remote_path_id = self.get_remote_path_id(**kwargs)
-        _motmaster = self.__dict__[f"MOTMaster_{remote_path_id}"]
-        _wavemeterlock = self.__dict__[f"WavemeterLock_{remote_path_id}"]
-        scan_laser_set_points(
+        scan(
             Dictionary, String, Object,
-            _wavemeterlock, _motmaster,
-            self.root, script, laser, values,
-            pre_callback, post_callback,
-            motmaster_parameter, motmaster_value,
-            self.interval
-        )
-        return None
-
-    def wavemeter_scan_laser_set_points_with_motmaster_values(
-        self,
-        script: str,
-        laser: str,
-        values: List[Tuple[Any]],
-        motmaster_parameter: str = None,
-        motmaster_values: List[Union[int, float]] = None,
-        pre_callback: Callable = None,
-        post_callback: Callable = None,
-        **kwargs
-    ) -> None:
-        remote_path_id = self.get_remote_path_id(**kwargs)
-        _motmaster = self.__dict__[f"MOTMaster_{remote_path_id}"]
-        _wavemeterlock = self.__dict__[f"WavemeterLock_{remote_path_id}"]
-        scan_laser_set_points_with_motmaster_values(
-            Dictionary, String, Object,
-            _wavemeterlock, _motmaster,
-            self.root, script, laser, values,
-            pre_callback, post_callback,
-            motmaster_parameter, motmaster_values,
-            self.interval
-        )
-        return None
-
-    def wavemeter_scan_laser_set_points_with_motmaster_multiple_parameters(
-        self,
-        script: str,
-        laser: str,
-        values: List[Tuple[Any]],
-        motmaster_parameters: List[str] = None,
-        motmaster_values: List[Tuple[Any]] = None,
-        pre_callback: Callable = None,
-        post_callback: Callable = None,
-        **kwargs
-    ) -> None:
-        remote_path_id = self.get_remote_path_id(**kwargs)
-        _motmaster = self.__dict__[f"MOTMaster_{remote_path_id}"]
-        _wavemeterlock = self.__dict__[f"WavemeterLock_{remote_path_id}"]
-        scan_laser_set_points_with_motmaster_multiple_parameters(
-            Dictionary, String, Object,
-            _wavemeterlock, _motmaster,
-            self.root, script, laser, values,
-            pre_callback, post_callback,
-            motmaster_parameters, motmaster_values,
-            self.interval
+            _wavemeterlock, _motmaster, _lasers[wmrp_id],
+            self.root, self.wavemeter_info_path, script,
+            motmaster_parameters_with_values, lasers_with_frequencies,
+            n_iter, pre_callback, post_callback, self.interval,
+            **kwargs
         )
         return None
