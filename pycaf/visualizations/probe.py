@@ -137,7 +137,7 @@ class Probe():
         fitting: str,
         x: np.ndarray,
         y_mean: np.ndarray,
-        y_err: np.ndarray,
+        y_err: np.ndarray = None,
     ) -> Fit:
         fit = None
         if fitting in fitting_func_map:
@@ -347,7 +347,9 @@ class Probe():
             imgs[j, :, :] = img_array.mean(axis=0)
             v_fit, h_fit = calculate_cloud_size_from_image_1d_gaussian(
                 imgs[j, col_start:col_end, row_start:row_end],
-                pixel_size=16e-6, bin_size=4, magnification=1.4
+                pixel_size=self.constants["pixel_size"],
+                bin_size=self.constants["binning"],
+                magnification=self.constants["magnification"]
             )
             v_width[j] = v_fit.width
             h_width[j] = h_fit.width
@@ -360,8 +362,18 @@ class Probe():
             xoffset = kwargs["xoffset"]
         else:
             xoffset = 0.0
+        if "yscale" in kwargs:
+            yscale = kwargs["yscale"]
+        else:
+            yscale = 1.0
+        if "yoffset" in kwargs:
+            yoffset = kwargs["yoffset"]
+        else:
+            yoffset = 0.0
 
         params = xscale*(np.array(unique_params)-xoffset)
+        v_width = yscale*(v_width-yoffset)
+        h_width = yscale*(h_width-yoffset)
         params_excluded = np.delete(params, param_index_fit_exclude)
         h_width_excluded = np.delete(h_width, param_index_fit_exclude)
         v_width_excluded = np.delete(v_width, param_index_fit_exclude)
@@ -379,14 +391,16 @@ class Probe():
 
         _, ax = self._1D_plot(
             file_start, file_stop,
-            params, y_mean=h_width_fit, y_err=None,
+            params, y_mean=h_width, y_err=None,
             fit=h_width_fit,
+            title="Horizontal width",
             **kwargs
         )
         _, ax = self._1D_plot(
             file_start, file_stop,
-            params, y_mean=v_width_fit, y_err=None,
+            params, y_mean=v_width, y_err=None,
             fit=v_width_fit,
+            title="Vertical width",
             **kwargs
         )
         if "display_images" in kwargs:
