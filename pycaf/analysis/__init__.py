@@ -13,14 +13,18 @@ from .curve_fitting import (
     fit_gaussian_without_offset_2D,
     linear,
     fit_linear,
+    quadratic_without_slope,
+    fit_quadratic_without_slope,
     lorentzian_with_offset,
     fit_lorentzian_with_offset,
     lorentzian_without_offset,
-    fit_lorentzian_without_offset
+    fit_lorentzian_without_offset,
+    fit_trap_frequency_oscillation
 )
 from .models import (
     Pattern,
     LinearFit,
+    QuadraticWithoutSlopeFit,
     GaussianFitWithOffset,
     GaussianFitWithoutOffset,
     ExponentialFitWithoutOffset,
@@ -28,7 +32,8 @@ from .models import (
     GaussianFitWithOffset2D,
     GaussianFitWithoutOffset2D,
     LorentzianFitWithOffset,
-    LorentzianFitWithoutOffset
+    LorentzianFitWithoutOffset,
+    TrapFrequencyOscillationFit
 )
 from .utils import (
     get_zip_archive,

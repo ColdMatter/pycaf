@@ -14,24 +14,28 @@ from ..analysis import (
     read_frequencies_from_zip,
     calculate_cloud_size_from_image_1d_gaussian,
     fit_linear,
+    fit_quadratic_without_slope,
     fit_exponential_without_offset,
     fit_exponential_with_offset,
     fit_gaussian_with_offset,
     fit_gaussian_without_offset,
     fit_lorentzian_with_offset,
-    fit_lorentzian_without_offset
+    fit_lorentzian_without_offset,
+    fit_trap_frequency_oscillation
 )
 
 
 fitting_func_map = \
     {
         "linear": fit_linear,
+        "quadratic_without_slope": fit_quadratic_without_slope,
         "exponential_without_offset": fit_exponential_without_offset,
         "exponential_with_offset": fit_exponential_with_offset,
         "gaussian_without_offset": fit_gaussian_without_offset,
         "gaussian_with_offset": fit_gaussian_with_offset,
         "lorentzian_with_offset": fit_lorentzian_with_offset,
-        "lorentzian_without_offset": fit_lorentzian_without_offset
+        "lorentzian_without_offset": fit_lorentzian_without_offset,
+        "trap_frequency_oscillation": fit_trap_frequency_oscillation
     }
 
 
@@ -129,7 +133,8 @@ class Probe():
             ax.set_xlim(kwargs["xlim"])
         if "ylim" in kwargs:
             ax.set_ylim(kwargs["ylim"])
-        ax.legend()
+        if label is not None:
+            ax.legend()
         return fig, ax
 
     def _1D_fit(
@@ -148,12 +153,73 @@ class Probe():
                 )
         return fit
 
-    def _display_all_image(
+    def _plot_cloud_images(
         self,
-        img: np.ndarray,
-        param: np.ndarray,
+        parameter: str,
+        unique_params: np.ndarray,
+        mean_cropped_images: np.ndarray,
+        n: np.ndarray,
+        dn: np.ndarray,
+        v_fits: Dict[int, Fit],
+        h_fits: Dict[int, Fit],
+        row_start,
+        row_end,
+        col_start,
+        col_end,
         **kwargs
     ) -> None:
+        if "cloud_image_figsize" in kwargs:
+            figsize = kwargs["cloud_image_figsize"]
+        else:
+            figsize = (12, 4)
+        for j in range(len(unique_params)):
+            fig = plt.figure(figsize=figsize)
+            fig.suptitle(f"{parameter}: {unique_params[j]}")
+            ax0 = plt.subplot2grid((1, 3), (0, 0), colspan=1)
+            ax1 = plt.subplot2grid((1, 3), (0, 1), colspan=2)
+            _im = ax0.imshow(mean_cropped_images[j, :, :])
+            if "clim" in kwargs:
+                _im.set_clim(kwargs["clim"])
+            if "grid" in kwargs:
+                ax0.grid(kwargs["grid"])
+            if "show_roi" in kwargs:
+                if kwargs["show_roi"]:
+                    ax0.add_patch(
+                        Rectangle(
+                            (row_start, col_start),
+                            row_end-row_start, col_end-col_start,
+                            edgecolor='white',
+                            facecolor='none',
+                            fill=False,
+                            lw=1
+                        )
+                    )
+            ax0.text(5, 10, f"N: {n[j]:.0f}+/-{dn[j]:.0f}", color="w")
+            if j in h_fits:
+                ax1.plot(
+                    1e3*h_fits[j].x, h_fits[j].y, "og", label="raw data"
+                )
+                ax1.plot(
+                    1e3*h_fits[j].x_fine,
+                    h_fits[j].y_fine, "-g",
+                    label="horizntal fit"
+                )
+            if j in v_fits:
+                ax1.plot(
+                    1e3*v_fits[j].x,
+                    v_fits[j].y, "ob",
+                    label="raw data"
+                )
+                ax1.plot(
+                    1e3*v_fits[j].x_fine,
+                    v_fits[j].y_fine, "-b",
+                    label="vertical fit"
+                )
+            ax1.set_xlabel("Distance [mm]")
+            ax1.set_ylabel("Integrated Cluod Signal [a. u.]")
+            ax1.yaxis.set_label_position("right")
+            ax1.yaxis.tick_right()
+            ax1.legend()
         return None
 
     def get_unique_parameters(
@@ -182,6 +248,208 @@ class Probe():
         unique_params = list(set(params))
         unique_params.sort(reverse=np.sum(np.diff(params)) <= 0)
         return unique_params, data_dict
+
+    def single_parameter_cloud_characterization(
+        self,
+        file_start: int,
+        file_stop: int,
+        parameter: str,
+        row_start: int = 0,
+        row_end: int = -1,
+        col_start: int = 0,
+        col_end: int = -1,
+        filter_points_for_fit: List[int] = [],
+        filter_iterations: List[int] = [],
+        **kwargs
+    ) -> None:
+        xscale, xoffset, yscale, yoffset = 1.0, 0.0, 1.0, 0.0
+        n_fit, h_width_fit, h_centre_fit = None, None, None
+        density_fit, v_width_fit, v_centre_fit = None, None, None
+        n_th = 100
+        unique_params, data_dict = self.get_unique_parameters(
+            file_start, file_stop, parameter
+        )
+        mean_imgs, v_fits, h_fits = [], {}, {}
+        n, dn = np.zeros(len(unique_params)), np.zeros(len(unique_params))
+        h_width = np.zeros(len(unique_params))
+        v_width = np.zeros(len(unique_params))
+        h_centre = np.zeros(len(unique_params))
+        v_centre = np.zeros(len(unique_params))
+        density = np.zeros(len(unique_params))
+        exposure_time = data_dict[self.exposure_time_param]*1e-5
+        number_multiplier = self.photon/(
+            exposure_time*self.constants["gamma"]
+            * self.constants["collection_solid_angle"]
+        )
+        if "number_threshold" in kwargs:
+            n_th = kwargs["number_threshold"]
+        for j in range(len(unique_params)):
+            _img_array: List[np.ndarray] = []
+            for i, fileno in enumerate(
+                range(file_start+2*j, file_stop+2*j+1, 2*len(unique_params))
+            ):
+                if i not in filter_iterations:
+                    yag_on = read_images_from_zip(
+                        get_zip_archive(
+                            self.rootpath, self.year, self.month, self.day,
+                            fileno, self.prefix
+                        )
+                    )
+                    yag_off = read_images_from_zip(
+                        get_zip_archive(
+                            self.rootpath, self.year, self.month, self.day,
+                            fileno+1, self.prefix
+                        )
+                    )
+                    _img_array.append(np.mean(yag_on - yag_off, axis=0))
+            img_array: np.ndarray = np.array(_img_array)
+            cropped_img_array: np.ndarray = \
+                img_array[:, row_start:row_end, col_start:col_end]
+            sum_cropped_img_array: np.ndarray = \
+                cropped_img_array.sum(axis=0)
+            mean_img_array: np.ndarray = img_array.mean(axis=0)
+            mean_imgs.append(mean_img_array)
+            _n: np.ndarray = number_multiplier*np.sum(
+                img_array[:, col_start:col_end, row_start:row_end],
+                axis=(1, 2)
+            )
+            n[j] = _n.mean()
+            dn[j] = _n.std()/np.sqrt(i+1)
+            if n[j] > n_th:
+                v_fit, h_fit = calculate_cloud_size_from_image_1d_gaussian(
+                    sum_cropped_img_array,
+                    pixel_size=self.constants["pixel_size"],
+                    bin_size=self.constants["binning"],
+                    magnification=self.constants["magnification"]
+                )
+                if v_fit is not None and h_fit is not None:
+                    v_fits[j] = v_fit
+                    h_fits[j] = h_fit
+                    v_centre[j] = v_fit.centre
+                    h_centre[j] = h_fit.centre
+                    v_width[j] = v_fit.width
+                    h_width[j] = h_fit.width
+                    volume = (4.0/3.0)*np.pi*v_width[j]*h_width[j]**2
+                    density[j] = n[j]/volume
+
+        if "display_cloud_images" in kwargs:
+            if kwargs["display_cloud_images"]:
+                self._plot_cloud_images(
+                    parameter, unique_params,
+                    np.array(mean_imgs),
+                    n, dn, v_fits, h_fits,
+                    row_start, row_end,
+                    col_start, col_end,
+                    **kwargs
+                )
+
+        if "xscale" in kwargs:
+            xscale = kwargs["xscale"]
+        if "xoffset" in kwargs:
+            xoffset = kwargs["xoffset"]
+        if "yscale" in kwargs:
+            yscale = kwargs["yscale"]
+        if "yoffset" in kwargs:
+            yoffset = kwargs["yoffset"]
+
+        unique_params = xscale*(np.array(unique_params)-xoffset)
+        v_centre = yscale*(v_centre-yoffset)
+        h_centre = yscale*(h_centre-yoffset)
+        v_width = yscale*(v_width-yoffset)
+        h_width = yscale*(h_width-yoffset)
+
+        filtered_unique_params = np.delete(
+            unique_params,
+            filter_points_for_fit
+        )
+
+        if "fit_number" in kwargs:
+            n_fit = self._1D_fit(
+                kwargs["fit_number"],
+                x=filtered_unique_params,
+                y_mean=np.delete(n, filter_points_for_fit),
+                y_err=np.delete(dn, filter_points_for_fit)
+            )
+        if "fit_horizontal_width" in kwargs:
+            h_width_fit = self._1D_fit(
+                kwargs["fit_horizontal_width"],
+                x=filtered_unique_params,
+                y_mean=np.delete(h_width, filter_points_for_fit)
+            )
+        if "fit_vertical_width" in kwargs:
+            v_width_fit = self._1D_fit(
+                kwargs["fit_vertical_width"],
+                x=filtered_unique_params,
+                y_mean=np.delete(v_width, filter_points_for_fit)
+            )
+        if "fit_horizontal_centre" in kwargs:
+            h_centre_fit = self._1D_fit(
+                kwargs["fit_horizontal_centre"],
+                x=filtered_unique_params,
+                y_mean=np.delete(h_centre, filter_points_for_fit)
+            )
+        if "fit_vertical_centre" in kwargs:
+            v_centre_fit = self._1D_fit(
+                kwargs["fit_vertical_centre"],
+                x=filtered_unique_params,
+                y_mean=np.delete(v_centre, filter_points_for_fit)
+            )
+        if "fit_density" in kwargs:
+            density_fit = self._1D_fit(
+                kwargs["fit_density"],
+                x=filtered_unique_params,
+                y_mean=np.delete(density, filter_points_for_fit)
+            )
+
+        if "display_number_variation" in kwargs:
+            self._1D_plot(
+                file_start, file_stop,
+                unique_params, y_mean=n, y_err=dn,
+                fit=n_fit,
+                ylabel="Molecule number",
+                **kwargs
+            )
+        if "display_size_variation" in kwargs:
+            if kwargs["display_size_variation"]:
+                self._1D_plot(
+                    file_start, file_stop,
+                    unique_params, y_mean=h_width, y_err=None,
+                    fit=h_width_fit,
+                    ylabel="Horizontal width",
+                    **kwargs
+                )
+                self._1D_plot(
+                    file_start, file_stop,
+                    unique_params, y_mean=v_width, y_err=None,
+                    fit=v_width_fit,
+                    ylabel="Vertical width",
+                    **kwargs
+                )
+        if "display_position_variation" in kwargs:
+            if kwargs["display_position_variation"]:
+                self._1D_plot(
+                    file_start, file_stop,
+                    unique_params, y_mean=h_centre, y_err=None,
+                    fit=h_centre_fit,
+                    ylabel="Horizontal centre",
+                    **kwargs
+                )
+                self._1D_plot(
+                    file_start, file_stop,
+                    unique_params, y_mean=v_centre, y_err=None,
+                    fit=v_centre_fit,
+                    ylabel="Vertical centre",
+                    **kwargs
+                )
+        if "display_density_variation" in kwargs:
+            self._1D_plot(
+                file_start, file_stop,
+                unique_params, y_mean=density, y_err=None,
+                fit=density_fit,
+                ylabel="Density",
+                **kwargs
+            )
+        return None
 
     def number_by_image(
         self,
@@ -544,6 +812,10 @@ class Probe():
         )
         h_width = np.zeros(len(unique_params))
         v_width = np.zeros(len(unique_params))
+        if "display_fits" in kwargs:
+            display_fits = kwargs["display_fits"]
+        else:
+            display_fits = None
         for j in range(len(unique_params)):
             _img_array: List[np.ndarray] = []
             for i, fileno in enumerate(
@@ -564,16 +836,44 @@ class Probe():
                 _img_array.append(np.mean(yag_on - yag_off, axis=0))
             img_array: np.ndarray = np.array(_img_array)
             imgs[j, :, :] = img_array.mean(axis=0)
+            _summed_img = img_array.sum(axis=0)
             v_fit, h_fit = calculate_cloud_size_from_image_1d_gaussian(
-                imgs[j, col_start:col_end, row_start:row_end],
-                pixel_size=16e-6, bin_size=4, magnification=1.4
+                _summed_img[col_start:col_end, row_start:row_end],
+                pixel_size=16e-6, bin_size=4, magnification=0.7
             )
             h_width[j] = h_fit.width
             v_width[j] = v_fit.width
+            if display_fits:
+                fig, ax = plt.subplots(2, 1, figsize=(8, 5), sharex=True)
+                fig.subplots_adjust(hspace=0.01)
+                ax[0].plot(
+                    h_fit.x, h_fit.y, ".k",
+                    h_fit.x_fine, h_fit.y_fine, "-r"
+                )
+                ax[1].plot(
+                    v_fit.x, v_fit.y, ".k",
+                    v_fit.x_fine, v_fit.y_fine, "-r"
+                )
+                ax[0].set_ylabel("Horizotal")
+                ax[1].set_ylabel("Vertical")
+                ax[1].set_xlabel("Spatial dimension")
+                ax[0].set_title(f"{parameter}: {unique_params[j]}")
 
         unique_params = np.array(unique_params)*1e-5
-        h_slope_fit = fit_linear(unique_params**2, h_width**2)
-        v_slope_fit = fit_linear(unique_params**2, v_width**2)
+        unique_params_excluded = np.delete(
+            unique_params,
+            param_index_fit_exclude
+        )
+        h_width_excluded = np.delete(h_width, param_index_fit_exclude)
+        v_width_excluded = np.delete(v_width, param_index_fit_exclude)
+        h_slope_fit = fit_linear(
+            unique_params_excluded**2,
+            h_width_excluded**2
+        )
+        v_slope_fit = fit_linear(
+            unique_params_excluded**2,
+            v_width_excluded**2
+        )
         h_temp = h_slope_fit.slope*(59*cn.u)/cn.k
         v_temp = v_slope_fit.slope*(59*cn.u)/cn.k
         fig, ax = plt.subplots(1, 2, figsize=(10, 6))
@@ -754,3 +1054,156 @@ class Probe():
         ax.set_ylabel(ylabel)
         ax.grid(False)
         return imgs, n
+
+    def position_by_image(
+        self,
+        file_start: int,
+        file_stop: int,
+        parameter: str,
+        row_start: int = 0,
+        row_end: int = -1,
+        col_start: int = 0,
+        col_end: int = -1,
+        fitting: str = None,
+        param_index_fit_exclude: List[int] = [],
+        **kwargs
+    ) -> Tuple[Fit, Fit, np.ndarray]:
+        unique_params, data_dict = self.get_unique_parameters(
+            file_start, file_stop, parameter
+        )
+        _imgs = read_images_from_zip(
+            get_zip_archive(
+                self.rootpath, self.year, self.month, self.day,
+                file_start, self.prefix
+            )
+        )
+        imgs = np.zeros(
+            (len(unique_params), _imgs.shape[-2], _imgs.shape[-1]),
+            dtype=float
+        )
+        h_centre = np.zeros(len(unique_params))
+        v_centre = np.zeros(len(unique_params))
+        if "display_fits" in kwargs:
+            display_fits = kwargs["display_fits"]
+        else:
+            display_fits = None
+        for j in range(len(unique_params)):
+            _img_array: List[np.ndarray] = []
+            for i, fileno in enumerate(
+                range(file_start+2*j, file_stop+2*j+1, 2*len(unique_params))
+            ):
+                yag_on = read_images_from_zip(
+                    get_zip_archive(
+                        self.rootpath, self.year, self.month, self.day,
+                        fileno, self.prefix
+                    )
+                )
+                yag_off = read_images_from_zip(
+                    get_zip_archive(
+                        self.rootpath, self.year, self.month, self.day,
+                        fileno+1, self.prefix
+                    )
+                )
+                _img_array.append(np.mean(yag_on - yag_off, axis=0))
+            img_array: np.ndarray = np.array(_img_array)
+            imgs[j, :, :] = img_array.mean(axis=0)
+            v_fit, h_fit = calculate_cloud_size_from_image_1d_gaussian(
+                imgs[j, col_start:col_end, row_start:row_end],
+                pixel_size=self.constants["pixel_size"],
+                bin_size=self.constants["binning"],
+                magnification=self.constants["magnification"]
+            )
+            v_centre[j] = v_fit.centre
+            h_centre[j] = h_fit.centre
+            if display_fits:
+                fig, ax = plt.subplots(2, 1, figsize=(8, 5), sharex=True)
+                fig.subplots_adjust(hspace=0.01)
+                ax[0].plot(
+                    h_fit.x, h_fit.y, ".k",
+                    h_fit.x_fine, h_fit.y_fine, "-r"
+                )
+                ax[1].plot(
+                    v_fit.x, v_fit.y, ".k",
+                    v_fit.x_fine, v_fit.y_fine, "-r"
+                )
+                ax[0].set_ylabel("Horizotal")
+                ax[1].set_ylabel("Vertical")
+                ax[1].set_xlabel("Spatial dimension")
+                ax[0].set_title(f"{parameter}: {unique_params[j]}")
+
+        if "xscale" in kwargs:
+            xscale = kwargs["xscale"]
+        else:
+            xscale = 1.0
+        if "xoffset" in kwargs:
+            xoffset = kwargs["xoffset"]
+        else:
+            xoffset = 0.0
+        if "yscale" in kwargs:
+            yscale = kwargs["yscale"]
+        else:
+            yscale = 1.0
+        if "yoffset" in kwargs:
+            yoffset = kwargs["yoffset"]
+        else:
+            yoffset = 0.0
+
+        params = xscale*(np.array(unique_params)-xoffset)
+        v_centre = yscale*(v_centre-yoffset)
+        h_centre = yscale*(h_centre-yoffset)
+        params_excluded = np.delete(params, param_index_fit_exclude)
+        h_centre_excluded = np.delete(h_centre, param_index_fit_exclude)
+        v_centre_excluded = np.delete(v_centre, param_index_fit_exclude)
+
+        h_centre_fit = self._1D_fit(
+            fitting,
+            params_excluded,
+            h_centre_excluded
+        )
+        v_centre_fit = self._1D_fit(
+            fitting,
+            params_excluded,
+            v_centre_excluded
+        )
+
+        _, ax = self._1D_plot(
+            file_start, file_stop,
+            params, y_mean=h_centre, y_err=None,
+            fit=h_centre_fit,
+            title="Horizontal position",
+            **kwargs
+        )
+        _, ax = self._1D_plot(
+            file_start, file_stop,
+            params, y_mean=v_centre, y_err=None,
+            fit=v_centre_fit,
+            title="Vertical position",
+            **kwargs
+        )
+        if "display_images" in kwargs:
+            if kwargs["display_images"]:
+                if "image_figsize" in kwargs:
+                    figsize = kwargs["image_figsize"]
+                else:
+                    figsize = (4, 4)
+                for j in range(len(unique_params)):
+                    _, ax = plt.subplots(1, 1, figsize=figsize)
+                    _im = ax.imshow(imgs[j, :, :])
+                    ax.set_title(f"{parameter}: {unique_params[j]}")
+                    if "clim" in kwargs:
+                        _im.set_clim(kwargs["clim"])
+                    if "grid" in kwargs:
+                        ax.grid(kwargs["grid"])
+                    if "show_roi" in kwargs:
+                        if kwargs["show_roi"]:
+                            ax.add_patch(
+                                Rectangle(
+                                    (row_start, col_start),
+                                    row_end-row_start, col_end-col_start,
+                                    edgecolor='white',
+                                    facecolor='none',
+                                    fill=False,
+                                    lw=1
+                                )
+                            )
+        return v_centre_fit, h_centre_fit, imgs

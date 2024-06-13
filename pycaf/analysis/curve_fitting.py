@@ -4,6 +4,7 @@ import numpy as np
 
 from .models import (
     LinearFit,
+    QuadraticWithoutSlopeFit,
     GaussianFitWithOffset,
     GaussianFitWithoutOffset,
     ExponentialFitWithOffset,
@@ -11,7 +12,8 @@ from .models import (
     GaussianFitWithoutOffset2D,
     GaussianFitWithOffset2D,
     LorentzianFitWithOffset,
-    LorentzianFitWithoutOffset
+    LorentzianFitWithoutOffset,
+    TrapFrequencyOscillationFit
 )
 
 
@@ -51,6 +53,48 @@ def fit_linear(
             x_fine=x_fine,
             y_fine=y_fine,
             slope=popt[0],
+            intercept=popt[1]
+        )
+    return fit
+
+
+def quadratic_without_slope(
+    x: float,
+    curvature: float,
+    intercept: float
+) -> float:
+    return x**2*curvature + intercept
+
+
+def fit_quadratic_without_slope(
+    x: np.ndarray,
+    y: np.ndarray,
+    err: np.ndarray = None,
+    n_fine: int = 100
+) -> QuadraticWithoutSlopeFit:
+    c_trial = 0.0
+    s_trial = (y[-1]-y[0])/(x[-1]-x[0])
+    i_trial = np.max(y) if s_trial < 0 else np.min(y)
+    p0 = [c_trial, i_trial]
+    fit, popt = None, None
+    try:
+        popt, _ = curve_fit(quadratic_without_slope, x, y, p0=p0, sigma=err)
+    except Exception as e:
+        print(f"Error {e} occured during fitting")
+    if popt is not None:
+        x_fine = np.linspace(np.min(x), np.max(x), n_fine)
+        y_fine = quadratic_without_slope(x_fine, *popt)
+        func_str = "\n y = a*x^2+c"
+        args_str = f"\n a: {popt[0]:e}\n c: {popt[1]:e}"
+        fit = QuadraticWithoutSlopeFit(
+            func_str=func_str,
+            args_str=args_str,
+            x=x,
+            y=y,
+            err=err,
+            x_fine=x_fine,
+            y_fine=y_fine,
+            curvature=popt[0],
             intercept=popt[1]
         )
     return fit
@@ -459,5 +503,58 @@ def fit_lorentzian_with_offset(
             centre=popt[1],
             width=popt[2],
             offset=popt[3]
+        )
+    return fit
+
+
+def trap_frequency_oscillation(
+    x: float,
+    amplitude: float,
+    rate: float,
+    phase: float,
+    frequency: float,
+    offset: float
+) -> float:
+    cosine_term = np.cos(np.sqrt((2*np.pi*frequency)**2-0.25*rate**2)*x-phase)
+    return amplitude*np.exp(-0.5*rate*x)*cosine_term+offset
+
+
+def fit_trap_frequency_oscillation(
+    x: np.ndarray,
+    y: np.ndarray,
+    err: np.ndarray = None,
+    n_fine: int = 100
+) -> TrapFrequencyOscillationFit:
+    a_trial = np.max(y)
+    r_trial = 0.0
+    p_trial = x[np.argmax(y)]
+    f_trial = np.min(y)
+    o_trial = np.mean(y)
+    p0 = [a_trial, r_trial, p_trial, f_trial, o_trial]
+    fit, popt = None, None
+    try:
+        popt, _ = curve_fit(trap_frequency_oscillation, x, y)
+    except Exception as e:
+        print(f"Error {e} occured during fitting")
+    if popt is not None:
+        x_fine = np.linspace(np.min(x), np.max(x), n_fine)
+        y_fine = trap_frequency_oscillation(x_fine, *popt)
+        func_str = "\n y = a*exp(-r*x/2)*cos(.....)"
+        args_str = f"\n a: {popt[0]:e}\n r: {popt[1]:e}" + \
+            f"\n p: {np.abs(popt[2]):e}\n f: {popt[3]:e}" + \
+            f"\n o: {popt[4]:e}\n"
+        fit = TrapFrequencyOscillationFit(
+            func_str=func_str,
+            args_str=args_str,
+            x=x,
+            y=y,
+            err=err,
+            x_fine=x_fine,
+            y_fine=y_fine,
+            amplitude=popt[0],
+            rate=popt[1],
+            phase=popt[2],
+            frequency=popt[3],
+            offset=popt[4]
         )
     return fit

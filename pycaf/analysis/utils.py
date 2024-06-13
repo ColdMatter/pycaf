@@ -561,8 +561,8 @@ def calculate_cloud_size_from_image_1d_gaussian(
     bin_size: int,
     magnification: float,
 ) -> Tuple[GaussianFitWithOffset, GaussianFitWithOffset]:
-    vertical_integrate = np.sum(image, axis=0)
-    horizontal_integrate = np.sum(image, axis=1)
+    vertical_integrate = np.sum(image, axis=1)
+    horizontal_integrate = np.sum(image, axis=0)
     scale = (pixel_size*bin_size/magnification)
     vertival_fit = fit_gaussian_with_offset(
         scale*np.arange(0, len(vertical_integrate)),
