@@ -24,7 +24,7 @@ from .curve_fitting import (
 from .models import (
     Pattern,
     LinearFit,
-    QuadraticWithoutSlopeFit,
+    QuadraticFitWithoutSlope,
     GaussianFitWithOffset,
     GaussianFitWithoutOffset,
     ExponentialFitWithoutOffset,

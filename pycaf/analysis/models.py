@@ -40,12 +40,12 @@ class LinearFit(Fit):
     intercept: float
 
 
-class QuadraticWithoutSlopeFit(Fit):
+class QuadraticFitWithoutSlope(Fit):
     curvature: float
     intercept: float
 
 
-class QuadraticWithSlopeFit(QuadraticWithoutSlopeFit):
+class QuadraticFitWithSlope(QuadraticFitWithoutSlope):
     slope: float
 
 
@@ -95,4 +95,3 @@ class TrapFrequencyOscillationFit(Fit):
     frequency: float
     phase: float
     offset: float
-

@@ -4,7 +4,7 @@ import numpy as np
 
 from .models import (
     LinearFit,
-    QuadraticWithoutSlopeFit,
+    QuadraticFitWithoutSlope,
     GaussianFitWithOffset,
     GaussianFitWithoutOffset,
     ExponentialFitWithOffset,
@@ -71,7 +71,7 @@ def fit_quadratic_without_slope(
     y: np.ndarray,
     err: np.ndarray = None,
     n_fine: int = 100
-) -> QuadraticWithoutSlopeFit:
+) -> QuadraticFitWithoutSlope:
     c_trial = 0.0
     s_trial = (y[-1]-y[0])/(x[-1]-x[0])
     i_trial = np.max(y) if s_trial < 0 else np.min(y)
@@ -86,7 +86,7 @@ def fit_quadratic_without_slope(
         y_fine = quadratic_without_slope(x_fine, *popt)
         func_str = "\n y = a*x^2+c"
         args_str = f"\n a: {popt[0]:e}\n c: {popt[1]:e}"
-        fit = QuadraticWithoutSlopeFit(
+        fit = QuadraticFitWithoutSlope(
             func_str=func_str,
             args_str=args_str,
             x=x,
