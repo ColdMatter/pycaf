@@ -1,4 +1,4 @@
-from typing import Tuple, List, Union, Dict
+from typing import Tuple, List, Union, Dict, Callable
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import numpy as np
@@ -39,7 +39,7 @@ fitting_func_map = \
     }
 
 
-class Probe():
+class ProbeV1():
     def __init__(
         self,
         config_path: str,
@@ -197,7 +197,7 @@ class Probe():
             ax0.text(5, 10, f"N: {n[j]:.0f}+/-{dn[j]:.0f}", color="w")
             if j in h_fits:
                 ax1.plot(
-                    1e3*h_fits[j].x, h_fits[j].y, "og", label="raw data"
+                    1e3*h_fits[j].x, h_fits[j].y, ".g", label="raw data"
                 )
                 ax1.plot(
                     1e3*h_fits[j].x_fine,
@@ -207,7 +207,7 @@ class Probe():
             if j in v_fits:
                 ax1.plot(
                     1e3*v_fits[j].x,
-                    v_fits[j].y, "ob",
+                    v_fits[j].y, ".b",
                     label="raw data"
                 )
                 ax1.plot(
@@ -260,6 +260,17 @@ class Probe():
         col_end: int = -1,
         filter_points_for_fit: List[int] = [],
         filter_iterations: List[int] = [],
+        parameter_callback: Callable = None,
+        number_callback: Callable = None,
+        width_callback: Callable = None,
+        centre_callback: Callable = None,
+        fit_number: Callable = None,
+        fit_horizontal_width: Callable = None,
+        fit_vertical_width: Callable = None,
+        fit_horizontal_centre: Callable = None,
+        fit_vertical_centre: Callable = None,
+        fit_density: Callable = None,
+        display_cloud_images: bool = False,
         **kwargs
     ) -> None:
         xscale, xoffset, yscale, yoffset = 1.0, 0.0, 1.0, 0.0
@@ -270,7 +281,8 @@ class Probe():
             file_start, file_stop, parameter
         )
         mean_imgs, v_fits, h_fits = [], {}, {}
-        n, dn = np.zeros(len(unique_params)), np.zeros(len(unique_params))
+        n = np.zeros(len(unique_params))
+        dn = np.zeros(len(unique_params))
         h_width = np.zeros(len(unique_params))
         v_width = np.zeros(len(unique_params))
         h_centre = np.zeros(len(unique_params))
@@ -332,16 +344,27 @@ class Probe():
                     volume = (4.0/3.0)*np.pi*v_width[j]*h_width[j]**2
                     density[j] = n[j]/volume
 
-        if "display_cloud_images" in kwargs:
-            if kwargs["display_cloud_images"]:
-                self._plot_cloud_images(
-                    parameter, unique_params,
-                    np.array(mean_imgs),
-                    n, dn, v_fits, h_fits,
-                    row_start, row_end,
-                    col_start, col_end,
-                    **kwargs
-                )
+        if display_cloud_images:
+            self._plot_cloud_images(
+                parameter, unique_params,
+                np.array(mean_imgs),
+                n, dn, v_fits, h_fits,
+                row_start, row_end,
+                col_start, col_end,
+                **kwargs
+            )
+
+        if parameter_callback is not None:
+            unique_params = parameter_callback(unique_params, **kwargs)
+        if number_callback is not None:
+            n = number_callback(n, **kwargs)
+            dn = number_callback(dn, **kwargs)
+        if width_callback is not None:
+            v_width = width_callback(v_width, **kwargs)
+            h_width = width_callback(h_width, **kwargs)
+        if centre_callback is not None:
+            v_centre = centre_callback(v_centre, **kwargs)
+            h_centre = centre_callback(h_centre, **kwargs)
 
         if "xscale" in kwargs:
             xscale = kwargs["xscale"]
@@ -363,42 +386,36 @@ class Probe():
             filter_points_for_fit
         )
 
-        if "fit_number" in kwargs:
-            n_fit = self._1D_fit(
-                kwargs["fit_number"],
-                x=filtered_unique_params,
-                y_mean=np.delete(n, filter_points_for_fit),
-                y_err=np.delete(dn, filter_points_for_fit)
+        if fit_number is not None:
+            n_fit = fit_number(
+                filtered_unique_params,
+                np.delete(n, filter_points_for_fit),
+                np.delete(dn, filter_points_for_fit)
             )
-        if "fit_horizontal_width" in kwargs:
-            h_width_fit = self._1D_fit(
-                kwargs["fit_horizontal_width"],
-                x=filtered_unique_params,
-                y_mean=np.delete(h_width, filter_points_for_fit)
+        if fit_horizontal_width is not None:
+            h_width_fit = fit_horizontal_width(
+                filtered_unique_params,
+                np.delete(h_width, filter_points_for_fit)
             )
-        if "fit_vertical_width" in kwargs:
-            v_width_fit = self._1D_fit(
-                kwargs["fit_vertical_width"],
-                x=filtered_unique_params,
-                y_mean=np.delete(v_width, filter_points_for_fit)
+        if fit_vertical_width is not None:
+            v_width_fit = fit_vertical_width(
+                filtered_unique_params,
+                np.delete(v_width, filter_points_for_fit)
             )
-        if "fit_horizontal_centre" in kwargs:
-            h_centre_fit = self._1D_fit(
-                kwargs["fit_horizontal_centre"],
-                x=filtered_unique_params,
-                y_mean=np.delete(h_centre, filter_points_for_fit)
+        if fit_horizontal_centre is not None:
+            h_centre_fit = fit_horizontal_centre(
+                filtered_unique_params,
+                np.delete(h_centre, filter_points_for_fit)
             )
-        if "fit_vertical_centre" in kwargs:
-            v_centre_fit = self._1D_fit(
-                kwargs["fit_vertical_centre"],
-                x=filtered_unique_params,
-                y_mean=np.delete(v_centre, filter_points_for_fit)
+        if fit_vertical_centre is not None:
+            v_centre_fit = fit_vertical_centre(
+                filtered_unique_params,
+                np.delete(v_centre, filter_points_for_fit)
             )
-        if "fit_density" in kwargs:
-            density_fit = self._1D_fit(
-                kwargs["fit_density"],
-                x=filtered_unique_params,
-                y_mean=np.delete(density, filter_points_for_fit)
+        if fit_density in kwargs:
+            density_fit = fit_density(
+                filtered_unique_params,
+                np.delete(density, filter_points_for_fit)
             )
 
         if "display_number_variation" in kwargs:
@@ -462,6 +479,7 @@ class Probe():
         col_end: int = -1,
         fitting: str = None,
         param_index_fit_exclude: List[int] = [],
+        params_calibration: List[float] = [],
         **kwargs
     ) -> Tuple[Fit, np.ndarray]:
         unique_params, data_dict = self.get_unique_parameters(
@@ -521,6 +539,8 @@ class Probe():
             xoffset = 0.0
 
         params = xscale*(np.array(unique_params)-xoffset)
+        if len(params_calibration):
+            params /= np.array(params_calibration)
         params_excluded = np.delete(params, param_index_fit_exclude)
         n_excluded = np.delete(n, param_index_fit_exclude)
         dn_excluded = np.delete(dn, param_index_fit_exclude)
@@ -621,6 +641,22 @@ class Probe():
             )
             v_width[j] = v_fit.width
             h_width[j] = h_fit.width
+            if "display_fits" in kwargs:
+                if kwargs["display_fits"]:
+                    _, ax = plt.subplots(1, 1, figsize=(8, 5))
+                    ax.plot(
+                        1e3*v_fit.x, v_fit.y, "ok",
+                        1e3*v_fit.x_fine, v_fit.y_fine, "-r"
+                    )
+                    ax.set_xlabel("Vertical distance [mm]")
+                    ax.set_ylabel("Integrated profie")
+                    _, ax = plt.subplots(1, 1, figsize=(8, 5))
+                    ax.plot(
+                        1e3*h_fit.x, h_fit.y, "ok",
+                        1e3*h_fit.x_fine, h_fit.y_fine, "-r"
+                    )
+                    ax.set_xlabel("Horizntal distance [mm]")
+                    ax.set_ylabel("Integrated profie")
 
         if "xscale" in kwargs:
             xscale = kwargs["xscale"]
@@ -733,7 +769,10 @@ class Probe():
                         fileno+1, self.prefix
                     )
                 )
-                _tof_array.append(yag_on - yag_off)
+                if len(yag_off) == len(yag_on):
+                    _tof_array.append(yag_on - yag_off)
+                else:
+                    print(f"File Error at {fileno}, {fileno+1}")
             tof_array: np.ndarray = np.array(_tof_array)
             tofs[j, :] = tof_array.mean(axis=0)
             _n: np.ndarray = np.sum(

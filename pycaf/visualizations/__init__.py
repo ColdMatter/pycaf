@@ -1,2 +1,2 @@
 from .pattern_visualizer import PatternVisualizer
-from .probe import Probe
+from .probeV2 import ProbeV2 as Probe

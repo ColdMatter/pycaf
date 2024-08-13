@@ -525,12 +525,12 @@ def fit_trap_frequency_oscillation(
     err: np.ndarray = None,
     n_fine: int = 100
 ) -> TrapFrequencyOscillationFit:
-    a_trial = np.max(y)
-    r_trial = 0.0
-    p_trial = x[np.argmax(y)]
-    f_trial = np.min(y)
-    o_trial = np.mean(y)
-    p0 = [a_trial, r_trial, p_trial, f_trial, o_trial]
+    # a_trial = np.max(y)
+    # r_trial = 0.0
+    # p_trial = x[np.argmax(y)]
+    # f_trial = np.min(y)
+    # o_trial = np.mean(y)
+    # p0 = [a_trial, r_trial, p_trial, f_trial, o_trial]
     fit, popt = None, None
     try:
         popt, _ = curve_fit(trap_frequency_oscillation, x, y)
