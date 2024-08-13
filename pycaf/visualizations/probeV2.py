@@ -9,7 +9,7 @@ import scipy.constants as cn
 from ..analysis.models import (
     Fit,
     LinearFit,
-    GaussianFitWithoutOffset,
+    GaussianFitWithOffset,
     ExponentialFitWithoutOffset
 )
 from ..analysis import (
@@ -96,10 +96,6 @@ class ProbeV2(ProbeV1):
         self.year = year
         self.month = month
         self.day = day
-        self.row_start = 0
-        self.row_end = -1
-        self.col_start = 0
-        self.col_end = -1
 
     def _get_unique_parameters(
         self,
@@ -145,14 +141,8 @@ class ProbeV2(ProbeV1):
         self.display_vertical_centre_ylim: Tuple[float, float] = None
         self.raw_images: np.ndarray = None
         self.processed_images: np.ndarray = None
-        self.horizontal_fits: Dict[
-            Tuple[int, int],
-            GaussianFitWithoutOffset
-        ] = {}
-        self.vertical_fits: Dict[
-            Tuple[int, int],
-            GaussianFitWithoutOffset
-        ] = {}
+        self.horizontal_fits: Dict[str, GaussianFitWithOffset] = {}
+        self.vertical_fits: Dict[str, GaussianFitWithOffset] = {}
         self.tofs: np.ndarray = None
         self.tof_sampling_rate: int = None
         self.number: np.ndarray = None
@@ -181,6 +171,10 @@ class ProbeV2(ProbeV1):
         self.fmt: str = "ok"
         self.xlabel: str = None
         self.title: str = None
+        self.row_start = 0
+        self.row_end = -1
+        self.col_start = 0
+        self.col_end = -1
         return self
 
     def __call__(
@@ -309,7 +303,7 @@ class ProbeV2(ProbeV1):
 
     def extract_shape(
         self,
-        mean_images: bool = False
+        mean_images: bool = True
     ) -> Self:
         self.mean_images = mean_images
         if not mean_images:
@@ -327,8 +321,8 @@ class ProbeV2(ProbeV1):
                                 bin_size=self.binning,
                                 magnification=self.magnification
                             )
-                        self.horizontal_fits[(i, j)] = h_fit
-                        self.vertical_fits[(i, j)] = v_fit
+                        self.horizontal_fits[f"({i}, {j})"] = h_fit
+                        self.vertical_fits[f"({i}, {j})"] = v_fit
                         _h_width[i, j] = h_fit.width
                         _v_width[i, j] = v_fit.width
                         _h_centre[i, j] = h_fit.centre
@@ -368,12 +362,14 @@ class ProbeV2(ProbeV1):
                             bin_size=self.binning,
                             magnification=self.magnification
                         )
-                    self.horizontal_fits[(0, j)] = h_fit
-                    self.vertical_fits[(0, j)] = v_fit
-                    self.horizontal_width[j] = h_fit.width
-                    self.vertical_width[j] = v_fit.width
-                    self.horizontal_centre[j] = h_fit.centre
-                    self.vertical_centre[j] = v_fit.centre
+                    self.horizontal_fits[f"(0, {j})"] = h_fit
+                    self.vertical_fits[f"(0, {j})"] = v_fit
+                    if h_fit is not None:
+                        self.horizontal_width[j] = h_fit.width
+                        self.horizontal_centre[j] = h_fit.centre
+                    if v_fit is not None:
+                        self.vertical_width[j] = v_fit.width
+                        self.vertical_centre[j] = v_fit.centre
             except Exception as e:
                 file_no = self.file_start+j*self.n_params  # FIXME
                 print(
@@ -465,7 +461,7 @@ class ProbeV2(ProbeV1):
             )
         return self
 
-    def plot_images(
+    def show_images(
         self,
         *args,
         **kwargs
@@ -478,9 +474,8 @@ class ProbeV2(ProbeV1):
         bottom_margin = 0.5
         top_margin = 0.25
         inter_margin = 0.1
-
+        factor = self.magnification/(self.binning*self.pixel_size)
         _, _, h, w = self.raw_images.shape
-        images = np.mean(self.raw_images, axis=0)
         height_ax0 = width_ax0 * float(h) / float(w)
         fwidth = left_margin + right_margin + \
             inter_margin + width_ax0 + width_ax1
@@ -488,27 +483,46 @@ class ProbeV2(ProbeV1):
             inter_margin + height_ax0 + height_ax2
 
         for k in range(self.n_params):
-            _image = images[k, :, :]
-            h_profile = np.sum(_image, axis=0)
-            h_dim = np.arange(0, len(h_profile))
-            v_profile = np.sum(_image, axis=1)
-            v_dim = np.arange(0, len(v_profile))
+            _processed_image = np.mean(
+                self.processed_images[:, k, :, :],
+                axis=0
+            )
+            _raw_image: np.ndarray = np.mean(
+                self.raw_images[:, k, :, :],
+                axis=0
+            )
+            _raw_height, _raw_width = _raw_image.shape
+            _raw_h_profile = np.zeros(_raw_height)
+            _raw_v_profile = np.zeros(_raw_width)
+            _raw_v_profile[self.col_start: self.col_end] = np.sum(
+                _processed_image,
+                axis=0
+            )
+            _raw_h_profile[self.row_start: self.row_end] = np.sum(
+                _processed_image,
+                axis=1
+            )
+            h_dim = np.arange(0, _raw_height)
+            v_dim = np.arange(0, _raw_width)
             fig = plt.figure(figsize=(fwidth, fheight))
             ax0 = fig.add_axes(
                 [left_margin / fwidth,
                  (bottom_margin + inter_margin + height_ax2) / fheight,
                  width_ax0 / fwidth, height_ax0 / fheight]
             )
+            ax0.xaxis.set_ticks_position("top")
             ax1 = fig.add_axes(
                 [(left_margin + width_ax0 + inter_margin) / fwidth,
                  (bottom_margin + inter_margin + height_ax2) / fheight,
                  width_ax1 / fwidth, height_ax0 / fheight]
             )
+            ax1.yaxis.tick_right()
             ax2 = fig.add_axes(
                 [left_margin / fwidth, bottom_margin / fheight,
                  width_ax0 / fwidth, height_ax2 / fheight]
             )
-            ax0.imshow(images[k, :, :])
+            ax0.imshow(_raw_image)
+            ax0.grid(False)
             ax0.add_patch(
                 Rectangle(
                     (self.row_start, self.col_start),
@@ -519,20 +533,30 @@ class ProbeV2(ProbeV1):
                     lw=1
                 )
             )
-            ax0.xaxis.set_ticks_position("top")
-            ax1.plot(v_profile, v_dim, '.')
-            ax1.yaxis.tick_right()
-            ax2.plot(h_dim, h_profile, '.')
-            if len(self.horizontal_fits):
-                if self.horizontal_fits[(0, k)] is not None:
-                    _h_fit: GaussianFitWithoutOffset = \
-                        self.horizontal_fits[(0, k)]
-                    ax1.plot(_h_fit.x_fine, _h_fit.y_fine, '-r')
+            ax1.plot(_raw_v_profile, v_dim, '.')
+            ax1.set_ylim(0, _raw_width)
             if len(self.vertical_fits):
-                if self.vertical_fits[(0, k)] is not None:
-                    _v_fit: GaussianFitWithoutOffset = \
-                        self.vertical_fits[(0, k)]
-                    ax1.plot(_v_fit.x_fine, _v_fit.y_fine, '-r')
+                if f"(0, {k})" in self.vertical_fits:
+                    if self.vertical_fits[f"(0, {k})"] is not None:
+                        _v_fit: GaussianFitWithOffset = \
+                            self.vertical_fits[f"(0, {k})"]
+                        ax1.plot(
+                            _v_fit.y_fine,
+                            self.col_start+_v_fit.x_fine*factor,
+                            '-r'
+                        )
+            ax2.plot(h_dim, _raw_h_profile, '.')
+            ax2.set_xlim(0, _raw_height)
+            if len(self.horizontal_fits):
+                if f"(0, {k})" in self.horizontal_fits:
+                    if self.horizontal_fits[f"(0, {k})"] is not None:
+                        _h_fit: GaussianFitWithOffset = \
+                            self.horizontal_fits[f"(0, {k})"]
+                        ax2.plot(
+                            self.row_start+_h_fit.x_fine*factor,
+                            _h_fit.y_fine,
+                            '-r'
+                        )
         return self
 
     def plot(
@@ -599,7 +623,7 @@ class ProbeV2(ProbeV1):
                 ax.set_title(self.title)
                 if yfit is not None:
                     ax.plot(
-                        self.unique_params,
+                        yfit.x_fine,
                         yfit.y_fine*yfactor,
                         "-r"
                     )
