@@ -231,24 +231,29 @@ class ProbeV2(ProbeV1):
                             fileno+1, self.prefix
                         )
                     )
-                    self.tof_sampling_rate, yag_on_tof = \
-                        read_time_of_flight_from_zip(
-                            get_zip_archive(
-                                self.rootpath,
-                                self.year, self.month, self.day,
-                                fileno, self.prefix
-                            )
-                        )
-                    _, yag_off_tof = read_time_of_flight_from_zip(
-                        get_zip_archive(
-                            self.rootpath, self.year, self.month, self.day,
-                            fileno+1, self.prefix
-                        )
-                    )
-                    self.tofs[i, j, :] = yag_on_tof - yag_off_tof
                     _image = np.mean(yag_on - yag_off, axis=0)
                     self.raw_images[i, j, :, :] = _image
                     self.processed_images[i, j, :, :] = _image
+                    try:
+                        self.tof_sampling_rate, yag_on_tof = \
+                            read_time_of_flight_from_zip(
+                                get_zip_archive(
+                                    self.rootpath,
+                                    self.year, self.month, self.day,
+                                    fileno, self.prefix
+                                )
+                            )
+                        _, yag_off_tof = read_time_of_flight_from_zip(
+                            get_zip_archive(
+                                self.rootpath, self.year, self.month, self.day,
+                                fileno+1, self.prefix
+                            )
+                        )
+                        self.tofs[i, j, :] = yag_on_tof - yag_off_tof
+                    except Exception as e:
+                        print(
+                            f"Error {e} happend while reading {fileno} for TOF"
+                        )
         return self
 
     def set_roi(
@@ -440,11 +445,11 @@ class ProbeV2(ProbeV1):
     ) -> Self:
         self.extract_shape(mean_images=True)
         self.horizontal_temperature: LinearFit = fit_linear(
-            self.unique_params**2,
+            (1e-5*self.unique_params)**2,
             self.horizontal_width**2
         )
         self.vertical_temperature: LinearFit = fit_linear(
-            self.unique_params**2,
+            (1e-5*self.unique_params)**2,
             self.vertical_width**2
         )
         return self
