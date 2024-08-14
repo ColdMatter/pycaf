@@ -539,7 +539,7 @@ class ProbeV2(ProbeV1):
                 )
             )
             ax1.plot(_raw_v_profile, v_dim, '.')
-            ax1.set_ylim(0, _raw_width)
+            ax1.set_ylim(_raw_width, 0)
             if len(self.vertical_fits):
                 if f"(0, {k})" in self.vertical_fits:
                     if self.vertical_fits[f"(0, {k})"] is not None:
