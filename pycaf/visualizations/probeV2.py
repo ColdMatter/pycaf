@@ -475,9 +475,9 @@ class ProbeV2(ProbeV1):
         *args,
         **kwargs
     ) -> Self:
-        width_ax0 = 4.
-        width_ax1 = 1.
-        height_ax2 = 1.
+        width_ax0 = 4.0
+        width_ax1 = 1.0
+        height_ax2 = 1.0
         left_margin = 0.65
         right_margin = 0.2
         bottom_margin = 0.5
@@ -572,7 +572,7 @@ class ProbeV2(ProbeV1):
         self,
         **kwargs
     ) -> Self:
-        list_of_y = [
+        list_of_y: List[np.ndarray] = [
             self.number,
             self.horizontal_width,
             self.vertical_width,
@@ -580,7 +580,7 @@ class ProbeV2(ProbeV1):
             self.vertical_centre,
             self.density
         ]
-        list_of_yerr = [
+        list_of_yerr: List[np.ndarray] = [
             self.number_err,
             self.horizontal_width_err,
             self.vertical_width_err,
@@ -588,7 +588,7 @@ class ProbeV2(ProbeV1):
             self.vertical_centre_err,
             self.density_err
         ]
-        list_of_ylabels = [
+        list_of_ylabels: List[str] = [
             "Molecule Numbers",
             "Horizontal Width [mm]",
             "Vertical Width [mm]",
@@ -596,7 +596,7 @@ class ProbeV2(ProbeV1):
             "Vertical Centre [mm]",
             "Density [Molecules/m3]"
         ]
-        list_of_yfactors = [
+        list_of_yfactors: List[float] = [
             1.0,
             1e3,
             1e3,
@@ -604,7 +604,7 @@ class ProbeV2(ProbeV1):
             1e3,
             1.0
         ]
-        list_of_yfits = [
+        list_of_yfits: List[Fit] = [
             self.number_fit,
             self.horizontal_width_fit,
             self.vertical_width_fit,
@@ -612,7 +612,7 @@ class ProbeV2(ProbeV1):
             self.vertical_centre_fit,
             self.density_fit
         ]
-        list_of_ylimits = [
+        list_of_ylimits: List[Tuple[float, float]] = [
             self.display_number_ylim,
             self.display_horizontal_width_ylim,
             self.display_vertical_width_ylim,
