@@ -129,16 +129,13 @@ class ProbeV2(ProbeV1):
         self.file_start: int = None
         self.file_stop: int = None
         self.unique_params: np.ndarray = None
-        self.display_number_xlim: Tuple[float, float] = None
-        self.display_horizontal_width_xlim: Tuple[float, float] = None
-        self.display_vertical_width_xlim: Tuple[float, float] = None
-        self.display_horizontal_centre_xlim: Tuple[float, float] = None
-        self.display_vertical_centre_xlim: Tuple[float, float] = None
+        self.display_xlim: Tuple[float, float] = None
         self.display_number_ylim: Tuple[float, float] = None
         self.display_horizontal_width_ylim: Tuple[float, float] = None
         self.display_vertical_width_ylim: Tuple[float, float] = None
         self.display_horizontal_centre_ylim: Tuple[float, float] = None
         self.display_vertical_centre_ylim: Tuple[float, float] = None
+        self.display_density_ylim: Tuple[float, float] = None
         self.raw_images: np.ndarray = None
         self.processed_images: np.ndarray = None
         self.horizontal_fits: Dict[str, GaussianFitWithOffset] = {}
@@ -234,26 +231,23 @@ class ProbeV2(ProbeV1):
                     _image = np.mean(yag_on - yag_off, axis=0)
                     self.raw_images[i, j, :, :] = _image
                     self.processed_images[i, j, :, :] = _image
-                    try:
-                        self.tof_sampling_rate, yag_on_tof = \
-                            read_time_of_flight_from_zip(
-                                get_zip_archive(
-                                    self.rootpath,
-                                    self.year, self.month, self.day,
-                                    fileno, self.prefix
-                                )
-                            )
-                        _, yag_off_tof = read_time_of_flight_from_zip(
+
+                    self.tof_sampling_rate, yag_on_tof = \
+                        read_time_of_flight_from_zip(
                             get_zip_archive(
-                                self.rootpath, self.year, self.month, self.day,
-                                fileno+1, self.prefix
+                                self.rootpath,
+                                self.year, self.month, self.day,
+                                fileno, self.prefix
                             )
                         )
-                        self.tofs[i, j, :] = yag_on_tof - yag_off_tof
-                    except Exception as e:
-                        print(
-                            f"Error {e} happend while reading {fileno} for TOF"
+                    _, yag_off_tof = read_time_of_flight_from_zip(
+                        get_zip_archive(
+                            self.rootpath, self.year, self.month, self.day,
+                            fileno+1, self.prefix
                         )
+                    )
+                    if len(yag_on_tof) and len(yag_off_tof):
+                        self.tofs[i, j, :] = yag_on_tof - yag_off_tof
         return self
 
     def set_roi(
@@ -279,6 +273,8 @@ class ProbeV2(ProbeV1):
         rev_indices = [i for i in range(dims[1]) if i not in indices]
         self.processed_images = \
             self.processed_images[:, rev_indices, :, :]
+        self.unique_params = self.unique_params[rev_indices]
+        self.n_params -= len(indices)
         return self
 
     def exclude_iterations_by_index(
@@ -354,6 +350,10 @@ class ProbeV2(ProbeV1):
             self.horizontal_centre = np.zeros((self.n_params))
             self.vertical_width = np.zeros((self.n_params))
             self.vertical_centre = np.zeros((self.n_params))
+            self.horizontal_width_err = np.zeros((self.n_params))
+            self.horizontal_centre_err = np.zeros((self.n_params))
+            self.vertical_width_err = np.zeros((self.n_params))
+            self.vertical_centre_err = np.zeros((self.n_params))
             try:
                 for j in range(self.n_params):
                     _processed_image = np.mean(
@@ -372,9 +372,13 @@ class ProbeV2(ProbeV1):
                     if h_fit is not None:
                         self.horizontal_width[j] = h_fit.width
                         self.horizontal_centre[j] = h_fit.centre
+                        self.horizontal_width_err[j] = h_fit.width_err
+                        self.horizontal_centre_err[j] = h_fit.centre_err
                     if v_fit is not None:
                         self.vertical_width[j] = v_fit.width
                         self.vertical_centre[j] = v_fit.centre
+                        self.vertical_width_err[j] = v_fit.width_err
+                        self.vertical_centre_err[j] = v_fit.centre_err
             except Exception as e:
                 file_no = self.file_start+j*self.n_params  # FIXME
                 print(
@@ -386,7 +390,7 @@ class ProbeV2(ProbeV1):
         self
     ) -> Self:
         self.extract_number()
-        self.extract_shape(mean_images=True)
+        self.extract_shape()
         self.density = (3*self.number)/(
             4*np.pi*self.horizontal_width**2*self.vertical_width
         )
@@ -608,12 +612,21 @@ class ProbeV2(ProbeV1):
             self.vertical_centre_fit,
             self.density_fit
         ]
-        for y, yerr, ylabel, yfactor, yfit in zip(
+        list_of_ylimits = [
+            self.display_number_ylim,
+            self.display_horizontal_width_ylim,
+            self.display_vertical_width_ylim,
+            self.display_horizontal_centre_ylim,
+            self.display_vertical_centre_ylim,
+            self.display_density_ylim
+        ]
+        for y, yerr, ylabel, yfactor, yfit, ylim in zip(
             list_of_y,
             list_of_yerr,
             list_of_ylabels,
             list_of_yfactors,
-            list_of_yfits
+            list_of_yfits,
+            list_of_ylimits
         ):
             if y is not None:
                 fig, ax = plt.subplots(1, 1, figsize=self.figsize)
@@ -626,6 +639,8 @@ class ProbeV2(ProbeV1):
                 ax.set_xlabel(self.xlabel)
                 ax.set_ylabel(ylabel)
                 ax.set_title(self.title)
+                ax.set_ylim(ylim)
+                ax.set_xlim(self.display_xlim)
                 if yfit is not None:
                     ax.plot(
                         yfit.x_fine,
@@ -647,25 +662,39 @@ class ProbeV2(ProbeV1):
         if self.horizontal_temperature is not None:
             _h_temp = self.horizontal_temperature.slope*(self.mass*cn.u)/cn.k
             _v_temp = self.vertical_temperature.slope*(self.mass*cn.u)/cn.k
+            _h_temp_err = \
+                self.horizontal_temperature.slope_err*(self.mass*cn.u)/cn.k
+            _v_temp_err = \
+                self.vertical_temperature.slope_err*(self.mass*cn.u)/cn.k
             fig, ax = plt.subplots(1, 2, figsize=self.figsize)
-            ax[0].plot(
+            ax[0].errorbar(
                 1e6*self.horizontal_temperature.x,
                 1e6*self.horizontal_temperature.y,
-                self.fmt,
+                yerr=1e6*self.horizontal_width_err**2,
+                fmt=self.fmt,
+            )
+            ax[0].plot(
                 1e6*self.horizontal_temperature.x_fine,
                 1e6*self.horizontal_temperature.y_fine,
                 "-r"
             )
-            ax[1].plot(
+            ax[1].errorbar(
                 1e6*self.vertical_temperature.x,
                 1e6*self.vertical_temperature.y,
-                self.fmt,
+                yerr=1e6*self.vertical_width_err**2,
+                fmt=self.fmt,
+            )
+            ax[1].plot(
                 1e6*self.vertical_temperature.x_fine,
                 1e6*self.vertical_temperature.y_fine,
                 "-r"
             )
-            ax[0].set_title(f"T_h: {1e6*_h_temp:.2f} uK")
-            ax[1].set_title(f"T_v: {1e6*_v_temp:.2f} uK")
+            ax[0].set_title(
+                f"T_h: {1e6*_h_temp:.2f}+/-{1e6*_h_temp_err:.2f} uK"
+            )
+            ax[1].set_title(
+                f"T_v: {1e6*_v_temp:.2f}+/-{1e6*_v_temp_err:.2f} uK"
+            )
             ax[0].set_xlabel("Sq. expansion time [ms^2]")
             ax[1].set_xlabel("Sq. expansion time [ms^2]")
             ax[0].set_ylabel("Sq. horizontal width [mm^2]")
@@ -745,4 +774,6 @@ class ProbeV2(ProbeV1):
             self.display_horizontal_centre_ylim = value
         if observable in vertical_centre_aliases:
             self.display_vertical_centre_ylim = value
+        if observable in density_aliases:
+            self.display_density_ylim = value
         return self
