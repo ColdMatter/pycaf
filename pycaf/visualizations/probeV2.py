@@ -183,19 +183,19 @@ class ProbeV2(ProbeV1):
         self.reset()
         self.file_start = file_start
         self.file_stop = file_stop
+        _trial_imgs = read_images_from_zip(
+            get_zip_archive(
+                self.rootpath, self.year, self.month, self.day,
+                file_start, self.prefix
+            )
+        )
+        _trial_img_dim = np.mean(_trial_imgs, axis=0).shape
         if type(parameter) is str or \
                 (type(parameter) is list and len(parameter) == 1):
             self.unique_params, self.data_dict = \
                 self._get_unique_parameters(
                     file_start, file_stop, parameter
                 )
-            _trial_imgs = read_images_from_zip(
-                get_zip_archive(
-                    self.rootpath, self.year, self.month, self.day,
-                    file_start, self.prefix
-                )
-            )
-            _trial_img_dim = np.mean(_trial_imgs, axis=0).shape
             self.n_params = len(self.unique_params)
             self.n_iter = len(
                 range(file_start, file_stop+1, 2*self.n_params)
@@ -667,6 +667,7 @@ class ProbeV2(ProbeV1):
             _v_temp_err = \
                 self.vertical_temperature.slope_err*(self.mass*cn.u)/cn.k
             fig, ax = plt.subplots(1, 2, figsize=self.figsize)
+            # FIXME errorbars are wrongly calculated
             ax[0].errorbar(
                 1e6*self.horizontal_temperature.x,
                 1e6*self.horizontal_temperature.y,
