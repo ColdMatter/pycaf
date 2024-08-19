@@ -12,7 +12,7 @@ import time
 try:
     import clr
     from System.Collections.Generic import Dictionary
-    from System import String, Object
+    from System import String, Object, Int32
     from System import Activator
 except Exception as e:
     print(f"Error: {e} encountered, probably no pythonnet")
@@ -95,7 +95,12 @@ def run(
                 state_value[i]
             )
         if state[0:9] == "motmaster":
-            _dictionary[state[10:]] = state_value[i]
+            _value = state_value[i]
+            _value_type = type(_value)
+            if _value_type == int:
+                _dictionary[state[10:]] = Int32(state_value[i])
+            else:
+                _dictionary[state[10:]] = state_value[i]
     save_laser_frequencies(
         WavemeterLock,
         lasers,
