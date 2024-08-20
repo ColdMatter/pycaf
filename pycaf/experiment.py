@@ -149,7 +149,10 @@ def scan(
     state_space = []
     for _ in range(n_iter):
         state_space.extend(_state_space)
-    for state_value in track(state_space):
+    for state_value in track(
+        state_space,
+        description='Running experiment...'
+    ):
         run(
             Dictionary, String, Object,
             WavemeterLock, MOTMaster,

@@ -667,11 +667,12 @@ class ProbeV2(ProbeV1):
             _v_temp_err = \
                 self.vertical_temperature.slope_err*(self.mass*cn.u)/cn.k
             fig, ax = plt.subplots(1, 2, figsize=self.figsize)
-            # FIXME errorbars are wrongly calculated
+            _h_e = 2*self.horizontal_temperature.y*self.horizontal_width_err
+            _v_e = 2*self.vertical_temperature.y*self.vertical_width_err
             ax[0].errorbar(
                 1e6*self.horizontal_temperature.x,
                 1e6*self.horizontal_temperature.y,
-                yerr=1e6*self.horizontal_width_err**2,
+                yerr=1e6*_h_e,
                 fmt=self.fmt,
             )
             ax[0].plot(
@@ -682,7 +683,7 @@ class ProbeV2(ProbeV1):
             ax[1].errorbar(
                 1e6*self.vertical_temperature.x,
                 1e6*self.vertical_temperature.y,
-                yerr=1e6*self.vertical_width_err**2,
+                yerr=1e6*_v_e,
                 fmt=self.fmt,
             )
             ax[1].plot(
