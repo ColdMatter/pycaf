@@ -67,6 +67,11 @@ number_aliases = ["number", "n", "N"]
 density_aliases = ["density", "d", "D"]
 
 
+# FIXME: Add multidimesional scan analysis
+# FIXME: Add time of flight analysis and display
+# FIXME: Add direct lifetime and temperature analysis
+
+
 class ProbeV2(ProbeV1):
     def __init__(
         self,
@@ -178,7 +183,8 @@ class ProbeV2(ProbeV1):
         self,
         file_start: int,
         file_stop: int,
-        parameter: Union[str, List[str]]
+        parameter: Union[str, List[str]],
+        discard_runs_upto: int = 0
     ) -> Self:
         self.reset()
         self.file_start = file_start
@@ -200,6 +206,7 @@ class ProbeV2(ProbeV1):
             self.n_iter = len(
                 range(file_start, file_stop+1, 2*self.n_params)
             )
+            self.n_sets = self.n_iter
             self.raw_images: np.ndarray = np.zeros(
                 (self.n_iter, self.n_params, *_trial_img_dim),
                 dtype=float
@@ -228,7 +235,11 @@ class ProbeV2(ProbeV1):
                             fileno+1, self.prefix
                         )
                     )
-                    _image = np.mean(yag_on - yag_off, axis=0)
+                    _image = np.mean(
+                        yag_on[discard_runs_upto:]
+                        - yag_off[discard_runs_upto:],
+                        axis=0
+                    )
                     self.raw_images[i, j, :, :] = _image
                     self.processed_images[i, j, :, :] = _image
 
@@ -304,101 +315,84 @@ class ProbeV2(ProbeV1):
 
     def extract_shape(
         self,
-        mean_images: bool = True
+        n_combine: int
     ) -> Self:
-        self.mean_images = mean_images
-        if not mean_images:
-            _h_width = np.zeros((self.n_iter, self.n_params))
-            _v_width = np.zeros((self.n_iter, self.n_params))
-            _h_centre = np.zeros((self.n_iter, self.n_params))
-            _v_centre = np.zeros((self.n_iter, self.n_params))
-            for j in range(self.n_params):
-                for i in range(self.n_iter):
-                    try:
-                        v_fit, h_fit = \
-                            calculate_cloud_size_from_image_1d_gaussian(
-                                self.processed_images[i, j, :, :],
-                                pixel_size=self.pixel_size,
-                                bin_size=self.binning,
-                                magnification=self.magnification
-                            )
-                        self.horizontal_fits[f"({i}, {j})"] = h_fit
-                        self.vertical_fits[f"({i}, {j})"] = v_fit
-                        _h_width[i, j] = h_fit.width
-                        _v_width[i, j] = v_fit.width
-                        _h_centre[i, j] = h_fit.centre
-                        _v_centre[i, j] = v_fit.centre
-                    except Exception as e:
-                        file_no = self.file_start+j+i*self.n_iter
-                        print(
-                            f"Error {e} occured in file {file_no} in size fit"
-                        )
-            self.horizontal_width = _h_width.mean(axis=0)
-            self.horizontal_centre = _h_centre.mean(axis=0)
-            self.vertical_width = _v_width.mean(axis=0)
-            self.vertical_centre = _v_centre.mean(axis=0)
-            self.horizontal_width_err = \
-                _h_width.std(axis=0)/np.sqrt(self.n_iter)
-            self.horizontal_centre_err = \
-                _h_centre.std(axis=0)/np.sqrt(self.n_iter)
-            self.vertical_width_err = \
-                _v_width.std(axis=0)/np.sqrt(self.n_iter)
-            self.vertical_centre_err = \
-                _v_centre.std(axis=0)/np.sqrt(self.n_iter)
-        else:
-            self.horizontal_width = np.zeros((self.n_params))
-            self.horizontal_centre = np.zeros((self.n_params))
-            self.vertical_width = np.zeros((self.n_params))
-            self.vertical_centre = np.zeros((self.n_params))
-            self.horizontal_width_err = np.zeros((self.n_params))
-            self.horizontal_centre_err = np.zeros((self.n_params))
-            self.vertical_width_err = np.zeros((self.n_params))
-            self.vertical_centre_err = np.zeros((self.n_params))
-            try:
-                for j in range(self.n_params):
-                    _processed_image = np.mean(
-                        self.processed_images[:, j, :, :],
-                        axis=0
-                    )
+        self.n_sets = int(self.n_iter/n_combine)
+        self.horizontal_width = np.zeros((self.n_sets, self.n_params))
+        self.horizontal_centre = np.zeros((self.n_sets, self.n_params))
+        self.vertical_width = np.zeros((self.n_sets, self.n_params))
+        self.vertical_centre = np.zeros((self.n_sets, self.n_params))
+        for j in range(self.n_params):
+            for i in range(self.n_sets):
+                try:
+                    _img = self.processed_images[
+                        i*n_combine:(i+1)*n_combine, j, :, :
+                    ].mean(axis=0)
                     v_fit, h_fit = \
                         calculate_cloud_size_from_image_1d_gaussian(
-                            _processed_image,
+                            _img,
                             pixel_size=self.pixel_size,
                             bin_size=self.binning,
                             magnification=self.magnification
                         )
-                    self.horizontal_fits[f"(0, {j})"] = h_fit
-                    self.vertical_fits[f"(0, {j})"] = v_fit
-                    if h_fit is not None:
-                        self.horizontal_width[j] = h_fit.width
-                        self.horizontal_centre[j] = h_fit.centre
-                        self.horizontal_width_err[j] = h_fit.width_err
-                        self.horizontal_centre_err[j] = h_fit.centre_err
-                    if v_fit is not None:
-                        self.vertical_width[j] = v_fit.width
-                        self.vertical_centre[j] = v_fit.centre
-                        self.vertical_width_err[j] = v_fit.width_err
-                        self.vertical_centre_err[j] = v_fit.centre_err
-            except Exception as e:
-                file_no = self.file_start+j*self.n_params  # FIXME
-                print(
-                    f"Error {e} occured in file {file_no} in size fit"
-                )
+                    self.horizontal_fits[f"({i}, {j})"] = h_fit
+                    self.vertical_fits[f"({i}, {j})"] = v_fit
+                    self.horizontal_width[i, j] = h_fit.width
+                    self.vertical_width[i, j] = v_fit.width
+                    self.horizontal_centre[i, j] = h_fit.centre
+                    self.vertical_centre[i, j] = v_fit.centre
+                except Exception as e:
+                    file_no = self.file_start+j+i*self.n_iter
+                    print(
+                        f"Error {e} occured in file {file_no} in size fit"
+                    )
         return self
 
     def extract_density(
+        self,
+        n_combine: int
+    ) -> Self:
+        self.extract_number()
+        self.extract_shape(n_combine)
+        v_horiz = self.horizontal_width.mean(axis=0)**2
+        v_horiz_err = self.horizontal_width.std(axis=0)/np.sqrt(self.n_sets)
+        v_vert = self.vertical_width.mean(axis=0)
+        v_vert_err = self.vertical_width.std(axis=0)/np.sqrt(self.n_sets)
+        self.density = (3*self.number)/(4*np.pi*v_horiz*v_vert)
+        self.density_err = np.abs(self.density)*np.sqrt(
+            (self.number_err/self.number)**2 +
+            (v_horiz_err/v_horiz)**2 +
+            (v_vert_err/v_vert)**2
+        )
+        return self
+
+    def extract_temperature(
+        self,
+        n_combine: int
+    ) -> Self:
+        self.extract_shape(n_combine)
+        self.horizontal_temperature = fit_linear(
+            (self.unique_params*1e-5)**2,
+            self.horizontal_width.mean(axis=0)**2,
+            (self.horizontal_width.std(axis=0)/np.sqrt(self.n_sets))**2
+        )
+        self.vertical_temperature = fit_linear(
+            (self.unique_params*1e-5)**2,
+            self.vertical_width.mean(axis=0)**2,
+            (self.vertical_width.std(axis=0)/np.sqrt(self.n_sets))**2
+        )
+        return self
+
+    def determine_lifetime(
         self
     ) -> Self:
         self.extract_number()
-        self.extract_shape()
-        self.density = (3*self.number)/(
-            4*np.pi*self.horizontal_width**2*self.vertical_width
-        )
-        self.density_err = np.abs(self.density)*np.sqrt(
-            (self.number_err/self.number)**2 +
-            (self.horizontal_width_err/self.horizontal_width)**2 +
-            (self.vertical_width_err/self.vertical_width)**2
-        )
+        self.lifetime: ExponentialFitWithoutOffset = \
+            fit_exponential_without_offset(
+                self.unique_params,
+                self.number,
+                self.number_err
+            )
         return self
 
     def curve_fit(
@@ -421,52 +415,26 @@ class ProbeV2(ProbeV1):
         if observable in horizontal_width_aliases:
             self.horizontal_width_fit: Fit = fitting_function(
                self.unique_params,
-               self.horizontal_width,
-               self.horizontal_width_err
+               self.horizontal_width.mean(axis=0),
+               self.horizontal_width.std(axis=0)/np.sqrt(self.n_sets)
             )
         if observable in vertical_width_aliases:
             self.vertical_width_fit: Fit = fitting_function(
                 self.unique_params,
-                self.vertical_width,
-                self.vertical_width_err
+                self.vertical_width.mean(axis=0),
+                self.vertical_width.std(axis=0)/np.sqrt(self.n_sets)
             )
         if observable in horizontal_centre_aliases:
             self.horizontal_centre_fit: Fit = fitting_function(
                 self.unique_params,
-                self.horizontal_centre,
-                self.horizontal_centre_err
+                self.horizontal_centre.mean(axis=0),
+                self.horizontal_centre.std(axis=0)/np.sqrt(self.n_sets)
             )
         if observable in vertical_centre_aliases:
             self.vertical_centre_fit: Fit = fitting_function(
                 self.unique_params,
-                self.vertical_centre,
-                self.vertical_centre_err
-            )
-        return self
-
-    def determine_temperature(
-        self
-    ) -> Self:
-        self.extract_shape(mean_images=True)
-        self.horizontal_temperature: LinearFit = fit_linear(
-            (1e-5*self.unique_params)**2,
-            self.horizontal_width**2
-        )
-        self.vertical_temperature: LinearFit = fit_linear(
-            (1e-5*self.unique_params)**2,
-            self.vertical_width**2
-        )
-        return self
-
-    def determine_lifetime(
-        self
-    ) -> Self:
-        self.extract_number()
-        self.lifetime: ExponentialFitWithoutOffset = \
-            fit_exponential_without_offset(
-                self.unique_params,
-                self.number,
-                self.number_err
+                self.vertical_centre.mean(axis=0),
+                self.vertical_centre.std(axis=0)/np.sqrt(self.n_sets)
             )
         return self
 
@@ -490,82 +458,104 @@ class ProbeV2(ProbeV1):
             inter_margin + width_ax0 + width_ax1
         fheight = bottom_margin + top_margin + \
             inter_margin + height_ax0 + height_ax2
-
-        for k in range(self.n_params):
-            _processed_image = np.mean(
-                self.processed_images[:, k, :, :],
-                axis=0
-            )
-            _raw_image: np.ndarray = np.mean(
-                self.raw_images[:, k, :, :],
-                axis=0
-            )
-            _raw_height, _raw_width = _raw_image.shape
-            _raw_h_profile = np.zeros(_raw_height)
-            _raw_v_profile = np.zeros(_raw_width)
-            _raw_v_profile[self.col_start: self.col_end] = np.sum(
-                _processed_image,
-                axis=0
-            )
-            _raw_h_profile[self.row_start: self.row_end] = np.sum(
-                _processed_image,
-                axis=1
-            )
-            h_dim = np.arange(0, _raw_height)
-            v_dim = np.arange(0, _raw_width)
-            fig = plt.figure(figsize=(fwidth, fheight))
-            ax0 = fig.add_axes(
-                [left_margin / fwidth,
-                 (bottom_margin + inter_margin + height_ax2) / fheight,
-                 width_ax0 / fwidth, height_ax0 / fheight]
-            )
-            ax0.xaxis.set_ticks_position("top")
-            ax1 = fig.add_axes(
-                [(left_margin + width_ax0 + inter_margin) / fwidth,
-                 (bottom_margin + inter_margin + height_ax2) / fheight,
-                 width_ax1 / fwidth, height_ax0 / fheight]
-            )
-            ax1.yaxis.tick_right()
-            ax2 = fig.add_axes(
-                [left_margin / fwidth, bottom_margin / fheight,
-                 width_ax0 / fwidth, height_ax2 / fheight]
-            )
-            ax0.imshow(_raw_image)
-            ax0.grid(False)
-            ax0.add_patch(
-                Rectangle(
-                    (self.row_start, self.col_start),
-                    self.row_end-self.row_start, self.col_end-self.col_start,
-                    edgecolor='white',
-                    facecolor='none',
-                    fill=False,
-                    lw=1
+        n_combine = int(self.n_iter/self.n_sets)
+        for j in range(self.n_params):
+            for i in range(self.n_sets):
+                _processed_image = self.processed_images[
+                    i*n_combine:(i+1)*n_combine, j, :, :
+                ].mean(axis=0)
+                _raw_image: np.ndarray = self.raw_images[
+                    i*n_combine:(i+1)*n_combine, j, :, :
+                ].mean(axis=0)
+                _raw_height, _raw_width = _raw_image.shape
+                _raw_h_profile = np.zeros(_raw_height)
+                _raw_v_profile = np.zeros(_raw_width)
+                _raw_v_profile[self.col_start: self.col_end] = np.sum(
+                    _processed_image,
+                    axis=0
                 )
-            )
-            ax1.plot(_raw_v_profile, v_dim, '.')
-            ax1.set_ylim(_raw_width, 0)
-            if len(self.vertical_fits):
-                if f"(0, {k})" in self.vertical_fits:
-                    if self.vertical_fits[f"(0, {k})"] is not None:
-                        _v_fit: GaussianFitWithOffset = \
-                            self.vertical_fits[f"(0, {k})"]
-                        ax1.plot(
-                            _v_fit.y_fine,
-                            self.col_start+_v_fit.x_fine*factor,
-                            '-r'
-                        )
-            ax2.plot(h_dim, _raw_h_profile, '.')
-            ax2.set_xlim(0, _raw_height)
-            if len(self.horizontal_fits):
-                if f"(0, {k})" in self.horizontal_fits:
-                    if self.horizontal_fits[f"(0, {k})"] is not None:
-                        _h_fit: GaussianFitWithOffset = \
-                            self.horizontal_fits[f"(0, {k})"]
-                        ax2.plot(
-                            self.row_start+_h_fit.x_fine*factor,
-                            _h_fit.y_fine,
-                            '-r'
-                        )
+                _raw_h_profile[self.row_start: self.row_end] = np.sum(
+                    _processed_image,
+                    axis=1
+                )
+                h_dim = np.arange(0, _raw_height)
+                v_dim = np.arange(0, _raw_width)
+                fig = plt.figure(figsize=(fwidth, fheight))
+                ax0 = fig.add_axes(
+                    [
+                        left_margin/fwidth,
+                        (bottom_margin+inter_margin+height_ax2)/fheight,
+                        width_ax0/fwidth,
+                        height_ax0/fheight
+                    ]
+                )
+                ax0.xaxis.set_ticks_position("top")
+                ax1 = fig.add_axes(
+                    [
+                        (left_margin+width_ax0+inter_margin)/fwidth,
+                        (bottom_margin+inter_margin+height_ax2) / fheight,
+                        width_ax1/fwidth,
+                        height_ax0/fheight
+                    ]
+                )
+                ax1.yaxis.tick_right()
+                ax2 = fig.add_axes(
+                    [
+                        left_margin/fwidth,
+                        bottom_margin/fheight,
+                        width_ax0/fwidth,
+                        height_ax2/fheight
+                    ]
+                )
+                ax0.imshow(_raw_image)
+                ax0.grid(False)
+                ax0.add_patch(
+                    Rectangle(
+                        (self.row_start, self.col_start),
+                        self.row_end-self.row_start,
+                        self.col_end-self.col_start,
+                        edgecolor='white',
+                        facecolor='none',
+                        fill=False,
+                        lw=1
+                    )
+                )
+                ax1.plot(_raw_v_profile, v_dim, '.')
+                ax1.set_ylim(_raw_width, 0)
+                if len(self.vertical_fits):
+                    if f"({i}, {j})" in self.vertical_fits:
+                        if self.vertical_fits[f"({i}, {j})"] is not None:
+                            _v_fit: GaussianFitWithOffset = \
+                                self.vertical_fits[f"({i}, {j})"]
+                            ax1.plot(
+                                _v_fit.y_fine,
+                                self.col_start+_v_fit.x_fine*factor,
+                                '-r'
+                            )
+                ax2.plot(h_dim, _raw_h_profile, '.')
+                ax2.set_xlim(0, _raw_height)
+                if len(self.horizontal_fits):
+                    if f"({i}, {j})" in self.horizontal_fits:
+                        if self.horizontal_fits[f"({i}, {j})"] is not None:
+                            _h_fit: GaussianFitWithOffset = \
+                                self.horizontal_fits[f"({i}, {j})"]
+                            ax2.plot(
+                                self.row_start+_h_fit.x_fine*factor,
+                                _h_fit.y_fine,
+                                '-r'
+                            )
+                ax0.text(
+                    3, 3,
+                    f"parameter: {j}, set: {i}",
+                    fontsize=8,
+                    color="white",
+                    verticalalignment='top',
+                    bbox=dict(
+                        boxstyle='round',
+                        facecolor='lightsteelblue',
+                        alpha=0.15
+                    )
+                )
         return self
 
     def plot(
@@ -574,18 +564,18 @@ class ProbeV2(ProbeV1):
     ) -> Self:
         list_of_y: List[np.ndarray] = [
             self.number,
-            self.horizontal_width,
-            self.vertical_width,
-            self.horizontal_centre,
-            self.vertical_centre,
+            self.horizontal_width.mean(axis=0),
+            self.vertical_width.mean(axis=0),
+            self.horizontal_centre.mean(axis=0),
+            self.vertical_centre.mean(axis=0),
             self.density
         ]
         list_of_yerr: List[np.ndarray] = [
             self.number_err,
-            self.horizontal_width_err,
-            self.vertical_width_err,
-            self.horizontal_centre_err,
-            self.vertical_centre_err,
+            self.horizontal_width.std(axis=0)/np.sqrt(self.n_sets),
+            self.vertical_width.std(axis=0)/np.sqrt(self.n_sets),
+            self.horizontal_centre.std(axis=0)/np.sqrt(self.n_sets),
+            self.vertical_centre.std(axis=0)/np.sqrt(self.n_sets),
             self.density_err
         ]
         list_of_ylabels: List[str] = [
@@ -660,56 +650,72 @@ class ProbeV2(ProbeV1):
                         )
                     )
         if self.horizontal_temperature is not None:
-            _h_temp = self.horizontal_temperature.slope*(self.mass*cn.u)/cn.k
-            _v_temp = self.vertical_temperature.slope*(self.mass*cn.u)/cn.k
-            _h_temp_err = \
-                self.horizontal_temperature.slope_err*(self.mass*cn.u)/cn.k
-            _v_temp_err = \
-                self.vertical_temperature.slope_err*(self.mass*cn.u)/cn.k
-            fig, ax = plt.subplots(1, 2, figsize=self.figsize)
-            _h_e = 2*self.horizontal_temperature.y*self.horizontal_width_err
-            _v_e = 2*self.vertical_temperature.y*self.vertical_width_err
-            ax[0].errorbar(
-                1e6*self.horizontal_temperature.x,
-                1e6*self.horizontal_temperature.y,
-                yerr=1e6*_h_e,
-                fmt=self.fmt,
-            )
-            ax[0].plot(
-                1e6*self.horizontal_temperature.x_fine,
-                1e6*self.horizontal_temperature.y_fine,
-                "-r"
-            )
-            ax[1].errorbar(
-                1e6*self.vertical_temperature.x,
-                1e6*self.vertical_temperature.y,
-                yerr=1e6*_v_e,
-                fmt=self.fmt,
-            )
-            ax[1].plot(
-                1e6*self.vertical_temperature.x_fine,
-                1e6*self.vertical_temperature.y_fine,
-                "-r"
-            )
-            ax[0].set_title(
-                f"T_h: {1e6*_h_temp:.2f}+/-{1e6*_h_temp_err:.2f} uK"
-            )
-            ax[1].set_title(
-                f"T_v: {1e6*_v_temp:.2f}+/-{1e6*_v_temp_err:.2f} uK"
-            )
-            ax[0].set_xlabel("Sq. expansion time [ms^2]")
-            ax[1].set_xlabel("Sq. expansion time [ms^2]")
-            ax[0].set_ylabel("Sq. horizontal width [mm^2]")
-            ax[1].yaxis.set_label_position("right")
-            ax[1].yaxis.tick_right()
-            ax[1].set_ylabel("Sq. vertical width [mm^2]")
+            self._plot_temperature()
         if self.lifetime is not None:
-            ax.plot(
-                self.lifetime.x_fine,
-                self.lifetime.y_fine,
-                "-r"
-            )
-            ax.set_title(f"Trap lifetime: {self.lifetime.rate*1e3:.2f} ms")
+            self._plot_lifetime()
+        return self
+
+    def _plot_temperature(
+        self
+    ) -> Self:
+        _h_temp = self.horizontal_temperature.slope*(self.mass*cn.u)/cn.k
+        _v_temp = self.vertical_temperature.slope*(self.mass*cn.u)/cn.k
+        _h_temp_err = \
+            self.horizontal_temperature.slope_err*(self.mass*cn.u)/cn.k
+        _v_temp_err = \
+            self.vertical_temperature.slope_err*(self.mass*cn.u)/cn.k
+        fig, ax = plt.subplots(1, 2, figsize=self.figsize)
+        fig.subplots_adjust(wspace=0.02)
+        _h_w_e = self.horizontal_width.std(axis=0)/np.sqrt(self.n_sets)
+        _v_w_e = self.vertical_width.std(axis=0)/np.sqrt(self.n_sets)
+        _h_e = 2*self.horizontal_width.mean(axis=0)*_h_w_e
+        _v_e = 2*self.vertical_width.mean(axis=0)*_v_w_e
+        ax[0].errorbar(
+            1e6*self.horizontal_temperature.x,
+            1e6*self.horizontal_temperature.y,
+            yerr=1e6*_h_e,
+            fmt=self.fmt,
+        )
+        ax[0].plot(
+            1e6*self.horizontal_temperature.x_fine,
+            1e6*self.horizontal_temperature.y_fine,
+            "-r"
+        )
+        ax[1].errorbar(
+            1e6*self.vertical_temperature.x,
+            1e6*self.vertical_temperature.y,
+            yerr=1e6*_v_e,
+            fmt=self.fmt,
+        )
+        ax[1].plot(
+            1e6*self.vertical_temperature.x_fine,
+            1e6*self.vertical_temperature.y_fine,
+            "-r"
+        )
+        ax[0].set_title(
+            f"T_h: {1e6*_h_temp:.2f}+/-{1e6*_h_temp_err:.2f} uK"
+        )
+        ax[1].set_title(
+            f"T_v: {1e6*_v_temp:.2f}+/-{1e6*_v_temp_err:.2f} uK"
+        )
+        ax[0].set_xlabel("Sq. expansion time [ms^2]")
+        ax[1].set_xlabel("Sq. expansion time [ms^2]")
+        ax[0].set_ylabel("Sq. horizontal width [mm^2]")
+        ax[1].yaxis.set_label_position("right")
+        ax[1].yaxis.tick_right()
+        ax[1].set_ylabel("Sq. vertical width [mm^2]")
+        return self
+
+    def _plot_lifetime(
+        self
+    ) -> Self:
+        fig, ax = plt.subplots(1, 1, figsize=self.figsize)
+        ax.plot(
+            self.lifetime.x_fine,
+            self.lifetime.y_fine,
+            "-r"
+        )
+        ax.set_title(f"Trap lifetime: {self.lifetime.rate*1e3:.2f} ms")
         return self
 
     def set_figsize(
@@ -717,6 +723,13 @@ class ProbeV2(ProbeV1):
         value: Tuple[int, int]
     ) -> Self:
         self.figsize = value
+        return self
+
+    def set_title(
+        self,
+        value: str
+    ) -> Self:
+        self.title = value
         return self
 
     def set_plot_fmt(

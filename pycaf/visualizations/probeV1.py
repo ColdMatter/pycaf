@@ -872,7 +872,7 @@ class ProbeV1():
                         fileno+1, self.prefix
                     )
                 )
-                _img_array.append(np.mean(yag_on - yag_off, axis=0))
+                _img_array.append(np.mean(yag_on[1:] - yag_off[1:], axis=0))
             img_array: np.ndarray = np.array(_img_array)
             imgs[j, :, :] = img_array.mean(axis=0)
             _summed_img = img_array.sum(axis=0)
@@ -1040,7 +1040,9 @@ class ProbeV1():
                             fileno+1, self.prefix
                         )
                     )
-                    _img_array.append(np.mean(yag_on - yag_off, axis=0))
+                    _img_array.append(
+                        np.mean(yag_on[1:] - yag_off[1:], axis=0)
+                    )
                 img_array: np.ndarray = np.array(_img_array)
                 imgs[j, k, :, :] = img_array.mean(axis=0)
                 _n: np.ndarray = number_multiplier*np.sum(
