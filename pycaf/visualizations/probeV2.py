@@ -562,20 +562,40 @@ class ProbeV2(ProbeV1):
         self,
         **kwargs
     ) -> Self:
+        _h_width_mean, _v_width_mean = None, None
+        _h_width_err, _v_width_err = None, None
+        _h_centre_mean, _v_centre_mean = None, None
+        _h_centre_err, _v_centre_err = None, None
+        if self.horizontal_width is not None:
+            _h_width_mean = self.horizontal_width.mean(axis=0)
+            _h_width_err = self.horizontal_width.std(axis=0) /\
+                np.sqrt(self.n_sets)
+        if self.vertical_width is not None:
+            _v_width_mean = self.vertical_width.mean(axis=0)
+            _v_width_err = self.vertical_width.std(axis=0) /\
+                np.sqrt(self.n_sets)
+        if self.horizontal_centre is not None:
+            _h_centre_mean = self.horizontal_centre.mean(axis=0)
+            _h_centre_err = self.horizontal_centre.std(axis=0) /\
+                np.sqrt(self.n_sets)
+        if self.vertical_width is not None:
+            _v_centre_mean = self.vertical_centre.mean(axis=0)
+            _v_centre_err = self.vertical_centre.std(axis=0) /\
+                np.sqrt(self.n_sets)
         list_of_y: List[np.ndarray] = [
             self.number,
-            self.horizontal_width.mean(axis=0),
-            self.vertical_width.mean(axis=0),
-            self.horizontal_centre.mean(axis=0),
-            self.vertical_centre.mean(axis=0),
+            _h_width_mean,
+            _v_width_mean,
+            _h_centre_mean,
+            _v_centre_mean,
             self.density
         ]
         list_of_yerr: List[np.ndarray] = [
             self.number_err,
-            self.horizontal_width.std(axis=0)/np.sqrt(self.n_sets),
-            self.vertical_width.std(axis=0)/np.sqrt(self.n_sets),
-            self.horizontal_centre.std(axis=0)/np.sqrt(self.n_sets),
-            self.vertical_centre.std(axis=0)/np.sqrt(self.n_sets),
+            _h_width_err,
+            _v_width_err,
+            _h_centre_err,
+            _v_centre_err,
             self.density_err
         ]
         list_of_ylabels: List[str] = [
