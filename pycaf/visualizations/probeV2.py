@@ -69,7 +69,8 @@ density_aliases = ["density", "d", "D"]
 
 # FIXME: Add multidimesional scan analysis
 # FIXME: Add time of flight analysis and display
-# FIXME: Add direct lifetime and temperature analysis
+# FIXME: Add standerdized colorbar for all show_images
+# FIXME: Filtering data by laser frequency/sideband discrepancy
 
 
 class ProbeV2(ProbeV1):
@@ -91,7 +92,10 @@ class ProbeV2(ProbeV1):
         )
         self.scale_multiplier = self.constants["magnification"] * \
             self.constants["pixel_size"]*self.constants["binning"]
-        self.exposure_time_param = self.constants["cs_exposure_time_parameter"]
+        self.exposure_time_param = \
+            self.constants["cs_exposure_time_parameter"]
+        self.camera_trigger_channel = \
+            self.constants["cs_camera_trigger_channel_name"]
         self.gamma = self.constants["gamma"]
         self.collection_solid_angle = self.constants["collection_solid_angle"]
         self.magnification = self.constants["magnification"]
@@ -133,6 +137,7 @@ class ProbeV2(ProbeV1):
     def reset(self) -> Self:
         self.file_start: int = None
         self.file_stop: int = None
+        self.background_fileno: int = None
         self.unique_params: np.ndarray = None
         self.display_xlim: Tuple[float, float] = None
         self.display_number_ylim: Tuple[float, float] = None
@@ -235,11 +240,9 @@ class ProbeV2(ProbeV1):
                             fileno+1, self.prefix
                         )
                     )
-                    _image = np.mean(
-                        yag_on[discard_runs_upto:]
-                        - yag_off[discard_runs_upto:],
-                        axis=0
-                    )
+                    yag_on = yag_on[discard_runs_upto:]
+                    yag_off = yag_off[discard_runs_upto:]
+                    _image = np.mean(yag_on-yag_off, axis=0)
                     self.raw_images[i, j, :, :] = _image
                     self.processed_images[i, j, :, :] = _image
 
@@ -273,7 +276,7 @@ class ProbeV2(ProbeV1):
         self.col_start = col_start
         self.col_end = col_end
         self.processed_images = \
-            self.processed_images[:, :, row_start:row_end, col_start:col_end]
+            self.processed_images[:, :, col_start:col_end, row_start:row_end]
         return self
 
     def exclude_parameters_by_index(
@@ -315,7 +318,8 @@ class ProbeV2(ProbeV1):
 
     def extract_shape(
         self,
-        n_combine: int
+        n_combine: int,
+        combination_type: str = "sum"
     ) -> Self:
         self.n_sets = int(self.n_iter/n_combine)
         self.horizontal_width = np.zeros((self.n_sets, self.n_params))
@@ -326,8 +330,12 @@ class ProbeV2(ProbeV1):
             for i in range(self.n_sets):
                 try:
                     _img = self.processed_images[
-                        i*n_combine:(i+1)*n_combine, j, :, :
-                    ].mean(axis=0)
+                            i*n_combine:(i+1)*n_combine, j, :, :
+                        ].sum(axis=0)
+                    if combination_type == "mean":
+                        _img = self.processed_images[
+                            i*n_combine:(i+1)*n_combine, j, :, :
+                        ].mean(axis=0)
                     v_fit, h_fit = \
                         calculate_cloud_size_from_image_1d_gaussian(
                             _img,
@@ -337,10 +345,12 @@ class ProbeV2(ProbeV1):
                         )
                     self.horizontal_fits[f"({i}, {j})"] = h_fit
                     self.vertical_fits[f"({i}, {j})"] = v_fit
-                    self.horizontal_width[i, j] = h_fit.width
-                    self.vertical_width[i, j] = v_fit.width
-                    self.horizontal_centre[i, j] = h_fit.centre
-                    self.vertical_centre[i, j] = v_fit.centre
+                    if h_fit is not None:
+                        self.horizontal_width[i, j] = h_fit.width
+                        self.horizontal_centre[i, j] = h_fit.centre
+                    if v_fit is not None:
+                        self.vertical_width[i, j] = v_fit.width
+                        self.vertical_centre[i, j] = v_fit.centre
                 except Exception as e:
                     file_no = self.file_start+j+i*self.n_iter
                     print(
@@ -350,27 +360,30 @@ class ProbeV2(ProbeV1):
 
     def extract_density(
         self,
-        n_combine: int
+        n_combine: int,
+        combination_type: str = "sum"
     ) -> Self:
         self.extract_number()
-        self.extract_shape(n_combine)
-        v_horiz = self.horizontal_width.mean(axis=0)**2
-        v_horiz_err = self.horizontal_width.std(axis=0)/np.sqrt(self.n_sets)
-        v_vert = self.vertical_width.mean(axis=0)
-        v_vert_err = self.vertical_width.std(axis=0)/np.sqrt(self.n_sets)
-        self.density = (3*self.number)/(4*np.pi*v_horiz*v_vert)
-        self.density_err = np.abs(self.density)*np.sqrt(
+        self.extract_shape(n_combine, combination_type)
+        w_horiz = self.horizontal_width.mean(axis=0)
+        w_horiz_err = self.horizontal_width.std(axis=0)/np.sqrt(self.n_sets)
+        w_vert = self.vertical_width.mean(axis=0)
+        w_vert_err = self.vertical_width.std(axis=0)/np.sqrt(self.n_sets)
+        volume = (4*np.pi/3.0)*w_horiz**2*w_vert
+        self.density = self.number/volume
+        self.density_err = self.density*np.sqrt(
             (self.number_err/self.number)**2 +
-            (v_horiz_err/v_horiz)**2 +
-            (v_vert_err/v_vert)**2
+            (2*w_horiz_err/w_horiz)**2 +
+            (w_vert_err/w_vert)**2
         )
         return self
 
     def extract_temperature(
         self,
-        n_combine: int
+        n_combine: int,
+        combination_type: str = "sum"
     ) -> Self:
-        self.extract_shape(n_combine)
+        self.extract_shape(n_combine, combination_type)
         self.horizontal_temperature = fit_linear(
             (self.unique_params*1e-5)**2,
             self.horizontal_width.mean(axis=0)**2,
@@ -381,18 +394,6 @@ class ProbeV2(ProbeV1):
             self.vertical_width.mean(axis=0)**2,
             (self.vertical_width.std(axis=0)/np.sqrt(self.n_sets))**2
         )
-        return self
-
-    def determine_lifetime(
-        self
-    ) -> Self:
-        self.extract_number()
-        self.lifetime: ExponentialFitWithoutOffset = \
-            fit_exponential_without_offset(
-                self.unique_params,
-                self.number,
-                self.number_err
-            )
         return self
 
     def curve_fit(
@@ -463,23 +464,23 @@ class ProbeV2(ProbeV1):
             for i in range(self.n_sets):
                 _processed_image = self.processed_images[
                     i*n_combine:(i+1)*n_combine, j, :, :
-                ].mean(axis=0)
+                ].sum(axis=0)
                 _raw_image: np.ndarray = self.raw_images[
                     i*n_combine:(i+1)*n_combine, j, :, :
-                ].mean(axis=0)
+                ].sum(axis=0)
                 _raw_height, _raw_width = _raw_image.shape
-                _raw_h_profile = np.zeros(_raw_height)
-                _raw_v_profile = np.zeros(_raw_width)
+                _raw_v_profile = np.zeros(_raw_height)
+                _raw_h_profile = np.zeros(_raw_width)
                 _raw_v_profile[self.col_start: self.col_end] = np.sum(
-                    _processed_image,
-                    axis=0
-                )
-                _raw_h_profile[self.row_start: self.row_end] = np.sum(
                     _processed_image,
                     axis=1
                 )
-                h_dim = np.arange(0, _raw_height)
-                v_dim = np.arange(0, _raw_width)
+                _raw_h_profile[self.row_start: self.row_end] = np.sum(
+                    _processed_image,
+                    axis=0
+                )
+                v_dim = np.arange(0, _raw_height)
+                h_dim = np.arange(0, _raw_width)
                 fig = plt.figure(figsize=(fwidth, fheight))
                 ax0 = fig.add_axes(
                     [
@@ -521,27 +522,27 @@ class ProbeV2(ProbeV1):
                     )
                 )
                 ax1.plot(_raw_v_profile, v_dim, '.')
-                ax1.set_ylim(_raw_width, 0)
-                if len(self.vertical_fits):
-                    if f"({i}, {j})" in self.vertical_fits:
-                        if self.vertical_fits[f"({i}, {j})"] is not None:
-                            _v_fit: GaussianFitWithOffset = \
-                                self.vertical_fits[f"({i}, {j})"]
-                            ax1.plot(
-                                _v_fit.y_fine,
-                                self.col_start+_v_fit.x_fine*factor,
-                                '-r'
-                            )
-                ax2.plot(h_dim, _raw_h_profile, '.')
-                ax2.set_xlim(0, _raw_height)
+                ax1.set_ylim(_raw_height, 0)
                 if len(self.horizontal_fits):
                     if f"({i}, {j})" in self.horizontal_fits:
                         if self.horizontal_fits[f"({i}, {j})"] is not None:
                             _h_fit: GaussianFitWithOffset = \
                                 self.horizontal_fits[f"({i}, {j})"]
-                            ax2.plot(
-                                self.row_start+_h_fit.x_fine*factor,
+                            ax1.plot(
                                 _h_fit.y_fine,
+                                self.col_start+_h_fit.x_fine*factor,
+                                '-r'
+                            )
+                ax2.plot(h_dim, _raw_h_profile, '.')
+                ax2.set_xlim(0, _raw_width)
+                if len(self.vertical_fits):
+                    if f"({i}, {j})" in self.vertical_fits:
+                        if self.vertical_fits[f"({i}, {j})"] is not None:
+                            _v_fit: GaussianFitWithOffset = \
+                                self.vertical_fits[f"({i}, {j})"]
+                            ax2.plot(
+                                self.row_start+_v_fit.x_fine*factor,
+                                _v_fit.y_fine,
                                 '-r'
                             )
                 ax0.text(
@@ -639,7 +640,8 @@ class ProbeV2(ProbeV1):
             list_of_ylimits
         ):
             if y is not None:
-                fig, ax = plt.subplots(1, 1, figsize=self.figsize)
+                yerr[yerr < 0] = 0.0
+                _, ax = plt.subplots(1, 1, figsize=self.figsize)
                 ax.errorbar(
                     self.unique_params,
                     y*yfactor,
@@ -669,7 +671,8 @@ class ProbeV2(ProbeV1):
                             alpha=0.15
                         )
                     )
-        if self.horizontal_temperature is not None:
+        if self.horizontal_temperature is not None \
+                and self.vertical_temperature is not None:
             self._plot_temperature()
         if self.lifetime is not None:
             self._plot_lifetime()
@@ -778,6 +781,13 @@ class ProbeV2(ProbeV1):
         values: List[Union[int, float]]
     ) -> Self:
         self.unique_params /= np.array(values)
+        return self
+
+    def set_xreplacement(
+        self,
+        values: List[Union[int, float, str]]
+    ) -> Self:
+        self.unique_params = np.array(values)
         return self
 
     def set_xlim(

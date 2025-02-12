@@ -1,6 +1,7 @@
-from typing import List, Union
+from typing import List, Union, Tuple, Dict
 import time
 import os
+from .ad9959 import AD9959
 
 
 def dds_init_pre_callback(
@@ -34,4 +35,22 @@ def dds_init_pre_callback(
 def dds_init_amp_pre_callback(
     **kwargs
 ) -> None:
+    return None
+
+
+def ad9959_pre_callback(
+    state_dims: List[str],
+    state_value: List[Union[int, float]],
+    **kwargs
+) -> None:
+    ad9959_instance: AD9959 = kwargs["ad9959_instance"]
+    index = int(kwargs["state_index"])
+    channel_configs: Dict[Tuple[float, float]] = \
+        kwargs["ad9959_channel_configs"][index]
+    print(f"callback {index}")
+    for channel, config in channel_configs.items():
+        ad9959_instance.set_frequency(config[0], channel=channel)
+        ad9959_instance.set_amplitude(config[1], channel=channel)
+        ad9959_instance.set_phase(0, channel=channel)
+    time.sleep(0.1)
     return None

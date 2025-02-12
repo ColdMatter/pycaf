@@ -149,6 +149,7 @@ def scan(
     state_space = []
     for _ in range(n_iter):
         state_space.extend(_state_space)
+    index = 0
     for state_value in track(
         state_space,
         description='Running experiment...'
@@ -159,8 +160,10 @@ def scan(
             lasers, root, wavemeter_info_dirpath, script,
             state_dims, state_value,
             pre_callback, post_callback, interval,
-            **kwargs
+            state_index=index, **kwargs
         )
+        print(index)
+        index += 1
     return None
 
 
