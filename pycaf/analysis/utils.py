@@ -368,6 +368,24 @@ def read_frequencies_from_zip(
     return frequencies
 
 
+def read_ad9959_frequencies_from_zip(
+    archive: ZipFile,
+    close: bool = True
+) -> Dict[str, Any]:
+    frequencies = {}
+    for filename in archive.namelist():
+        if filename[-16:] == "AD9959Config.txt":
+            with archive.open(filename) as f:
+                line = f.readline()
+                _frequencies: Dict[str, List[float, float]] = json.loads(line)
+            for key, value in _frequencies.items():
+                frequencies[f"ad9959_channel_{key}_freq"] = value[0]
+                frequencies[f"ad9959_channel_{key}_amp"] = value[1]
+    if close:
+        archive.close()
+    return frequencies
+
+
 def read_time_of_flight_from_zip(
     archive: ZipFile,
     close: bool = True
@@ -612,3 +630,34 @@ def convert_chirp_freq_to_tof_bin(
         chirp_freq_in_MHz*1e6*3e8/(laser_frequency_in_THz*1e12)
     )*sampling_rate
     return int(bin_number)
+
+
+def convert_blue_mot_detuning_to_aom_frequencies(
+    Delta_in_MHz: float,
+    delta_a_in_MHz: float,
+    delta_b_in_MHz: float,
+    delta_R_in_MHz: float,
+    R0_aom_in_MHz: float,
+    R1p_amp: float,
+    B2_amp: float,
+    B1m_amp: float,
+    R1p_channel_no: int,
+    B2_channel_no: int,
+    B1m_channel_no: int,
+) -> Dict[int, Tuple[float, float]]:
+    # CaF structure:
+    # level1m = 0.0
+    # level1p = 123.0
+    level0 = 76.4
+    level2 = 148.0
+    add9959_freq: Dict = {}
+    B1m_in_MHz = (level2 - delta_a_in_MHz)/2
+    B2_in_MHz = (
+        Delta_in_MHz-level2+level0 +
+        2*R0_aom_in_MHz+delta_R_in_MHz+delta_a_in_MHz
+    )/2
+    R1p_in_MHz = B2_in_MHz - (delta_a_in_MHz-delta_b_in_MHz)/2
+    add9959_freq[R1p_channel_no] = (R1p_in_MHz, R1p_amp)
+    add9959_freq[B2_channel_no] = (B2_in_MHz, B2_amp)
+    add9959_freq[B1m_channel_no] = (B1m_in_MHz, B1m_amp)
+    return add9959_freq

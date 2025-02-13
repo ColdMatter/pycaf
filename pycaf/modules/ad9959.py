@@ -929,3 +929,18 @@ class DeviceHandle(usb.DeviceHandle):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.finalize()
+
+
+def print_all_port_numbers_bus_numbers(idVendor=0x0456, idProduct=0xee25):
+    devs = list(
+        usb.core.find(
+            idVendor=idVendor,
+            idProduct=idProduct,
+            find_all=True,
+            backend=libusb0.get_backend()
+            )
+        )
+    for i, d in enumerate(devs):
+        print(
+            f"Device {i}, Port number: {d}, Bus number: {d.address}"
+        )

@@ -1,6 +1,7 @@
 from typing import List, Union, Tuple, Dict
 import time
 import os
+import json
 from .ad9959 import AD9959
 
 
@@ -44,13 +45,17 @@ def ad9959_pre_callback(
     **kwargs
 ) -> None:
     ad9959_instance: AD9959 = kwargs["ad9959_instance"]
-    index = int(kwargs["state_index"])
+    config_index_var: str = kwargs["ad9959_config_index_variable"]
+    state_dims_imdex: int = state_dims.index(f"motmaster_{config_index_var}")
+    temp_file_path: str = kwargs["ad9959_temp_file_path"]
+    config_index: int = state_value[state_dims_imdex]
     channel_configs: Dict[Tuple[float, float]] = \
-        kwargs["ad9959_channel_configs"][index]
-    print(f"callback {index}")
+        kwargs["ad9959_channel_configs"][config_index]
     for channel, config in channel_configs.items():
         ad9959_instance.set_frequency(config[0], channel=channel)
         ad9959_instance.set_amplitude(config[1], channel=channel)
         ad9959_instance.set_phase(0, channel=channel)
+    with open(os.path.join(temp_file_path, "AD9959Config.txt"), "w") as f:
+        json.dump(channel_configs, f)
     time.sleep(0.1)
     return None

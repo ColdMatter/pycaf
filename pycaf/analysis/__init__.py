@@ -45,6 +45,7 @@ from .utils import (
     read_images_from_zip,
     read_parameters_from_zip,
     read_frequencies_from_zip,
+    read_ad9959_frequencies_from_zip,
     read_time_of_flight_from_zip,
     read_time_of_flight_from_zip_no_mean,
     smooth_time_of_flight,
@@ -59,5 +60,6 @@ from .utils import (
     calculate_cloud_size_from_image_2d_gaussian,
     calculate_temperature,
     calculate_lifetime,
-    convert_chirp_freq_to_tof_bin
+    convert_chirp_freq_to_tof_bin,
+    convert_blue_mot_detuning_to_aom_frequencies
 )

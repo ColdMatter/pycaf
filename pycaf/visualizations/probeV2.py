@@ -18,6 +18,7 @@ from ..analysis import (
     read_images_from_zip,
     read_parameters_from_zip,
     read_frequencies_from_zip,
+    read_ad9959_frequencies_from_zip,
     calculate_cloud_size_from_image_1d_gaussian,
     fit_linear,
     fit_quadratic_without_slope,
@@ -126,7 +127,14 @@ class ProbeV2(ProbeV1):
                     fileno, self.prefix
                 )
             )
-            data_dict = _all_params | _all_frequencies
+            _all_ad9959_frequencies = read_ad9959_frequencies_from_zip(
+                get_zip_archive(
+                    self.rootpath, self.year, self.month, self.day,
+                    fileno, self.prefix
+                )
+            )
+            _data_dict = _all_params | _all_frequencies
+            data_dict = _data_dict | _all_ad9959_frequencies
             assert parameter in data_dict
             params.append(data_dict[parameter])
         unique_params = list(set(params))
