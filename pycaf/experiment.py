@@ -78,9 +78,9 @@ class Experiment():
             elif key == "caf_hardware_controller":
                 self._add_ref(path_info["exe_path"])
                 try:
-                    import MoleculeMOTHadwareControl
+                    import MoleculeMOTHardwareControl
                     self.hardware_controller = Activator.GetObject(
-                        MoleculeMOTHadwareControl.Controller,
+                        MoleculeMOTHardwareControl.Controller,
                         path_info["remote_path"]
                     )
                 except Exception as e:
@@ -140,6 +140,7 @@ class Experiment():
                                 print("Too many PicoMotor device detected!")
                         except Exception as e:
                             print(f"Error: {e} encountered")
+        print(self.hardware_controller)
         return None
 
     def disconnect(

@@ -237,14 +237,14 @@ class LiveMOT(Experiment):
                 self.timegap_in_ms
             )
             h_profile_fit, v_profile_fit = self.size_analysis(images)
+            self.lifetime_fit = lifetime_fit
+            self.h_profile_fit = h_profile_fit
+            self.v_profile_fit = v_profile_fit
+            self.lifetime_list = np.append(self.lifetime_list, lifetime_fit.rate)
+            self.number_list = np.append(self.number_list, lifetime_fit.y[0])
         except Exception as e:
             print(f"Error {e} occured in fitting.")
         time.sleep(0.1)
-        self.lifetime_fit = lifetime_fit
-        self.h_profile_fit = h_profile_fit
-        self.v_profile_fit = v_profile_fit
-        self.lifetime_list = np.append(self.lifetime_list, lifetime_fit.rate)
-        self.number_list = np.append(self.number_list, lifetime_fit.y[0])
         return None
 
 

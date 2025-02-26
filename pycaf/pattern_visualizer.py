@@ -77,9 +77,9 @@ class PatternVisualizer():
             )
             key = f"{years[i]}_{months[i]}_{days[i]}_{file_no}"
             digital_channels: Dict[str, Pattern] = \
-                read_digital_patterns_from_zip(archive)
+                read_digital_patterns_from_zip(archive, False)
             analog_channels: Dict[str, Pattern] = \
-                read_analog_patterns_from_zip(archive)
+                read_analog_patterns_from_zip(archive, False)
             _channels = {
                 **digital_channels,
                 **analog_channels

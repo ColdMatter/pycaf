@@ -148,7 +148,7 @@ def read_digital_patterns_from_zip(
     archive: ZipFile,
     close: bool = True
 ) -> Dict[str, Pattern]:
-    parameters = read_parameters_from_zip(archive)
+    parameters = read_parameters_from_zip(archive, False)
     full_time = parameters["PatternLength"]
     channels: Dict[str, Pattern] = {}
     for filename in archive.namelist():
@@ -317,6 +317,30 @@ def read_time_of_flight_from_zip(
     return sampling_rate, tofs
 
 
+def read_time_of_flight_from_zip_timestamped(
+    archive: ZipFile,
+    close: bool = True
+) -> Tuple[int, np.ndarray]:
+    tofs = []
+    sampling_rate: int = 0
+    sorted_filenames = archive.namelist()
+    sorted_filenames.sort(key=natural_keys)
+    for filename in sorted_filenames:
+        if filename[0:3] == "Tof":
+            with archive.open(filename) as tof_file:
+                lines: List[bytes] = tof_file.readlines()
+                tofs.append(lines[1:])
+                sampling_rate: int = int(
+                    lines[0].decode("utf-8").split(",")[0].split(":")[-1]
+                )
+    if len(tofs) > 1:
+        tofs = np.array(tofs, dtype=float).mean(axis=0)
+    if close:
+        archive.close()
+    return sampling_rate, tofs, sorted_filenames
+   
+
+
 def read_time_of_flight_from_zip_no_mean(
     archive: ZipFile,
     close: bool = True
@@ -339,6 +363,50 @@ def read_time_of_flight_from_zip_no_mean(
         archive.close()
     return sampling_rate, tofs
 
+def read_absorption_from_zip(
+    archive: ZipFile,
+    close: bool = True
+) -> Tuple[int, np.ndarray]:
+    tofs = []
+    sampling_rate: int = 0
+    sorted_filenames = archive.namelist()
+    sorted_filenames.sort(key=natural_keys)
+    for filename in sorted_filenames:
+        if filename[0:3] == "Abs":
+            with archive.open(filename) as tof_file:
+                lines: List[bytes] = tof_file.readlines()
+                tofs.append(lines[1:])
+                sampling_rate: int = int(
+                    lines[0].decode("utf-8").split(",")[0].split(":")[-1]
+                )
+    if len(tofs) > 1:
+        tofs = np.array(tofs, dtype=float).mean(axis=0)
+    if close:
+        archive.close()
+    return sampling_rate, tofs
+
+
+def read_absorption_from_zip_no_mean(
+    archive: ZipFile,
+    close: bool = True
+) -> Tuple[int, np.ndarray]:
+    tofs = []
+    sampling_rate: int = 0
+    sorted_filenames = archive.namelist()
+    sorted_filenames.sort(key=natural_keys)
+    for filename in sorted_filenames:
+        if filename[0:3] == "Abs":
+            with archive.open(filename) as tof_file:
+                lines: List[bytes] = tof_file.readlines()
+                tofs.append(lines[1:])
+                sampling_rate: int = int(
+                    lines[0].decode("utf-8").split(",")[0].split(":")[-1]
+                )
+    if len(tofs) > 1:
+        tofs = np.array(tofs, dtype=float)
+    if close:
+        archive.close()
+    return sampling_rate, tofs
 
 def smooth_time_of_flight(
     tofs: np.ndarray,
