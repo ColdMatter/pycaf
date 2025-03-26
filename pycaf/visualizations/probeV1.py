@@ -776,8 +776,8 @@ class ProbeV1():
             tof_array: np.ndarray = np.array(_tof_array)
             tofs[j, :] = tof_array.mean(axis=0)
             _n: np.ndarray = np.sum(
-                tof_array[:, :, bin_start:bin_end],
-                axis=(1, 2)
+                tof_array[:, bin_start:bin_end],
+                axis=(1)
             )
             n[j] = _n.mean()
             dn[j] = _n.std()/np.sqrt(i+1)

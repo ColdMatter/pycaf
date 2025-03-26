@@ -250,7 +250,13 @@ class ProbeV2(ProbeV1):
                     )
                     yag_on = yag_on[discard_runs_upto:]
                     yag_off = yag_off[discard_runs_upto:]
-                    _image = np.mean(yag_on-yag_off, axis=0)
+                    if len(yag_on) == len(yag_off):
+                        _image = np.mean(yag_on-yag_off, axis=0)
+                    else:
+                        _image = np.mean(
+                            yag_on-np.mean(yag_off, axis=0),
+                            axis=0
+                        )
                     self.raw_images[i, j, :, :] = _image
                     self.processed_images[i, j, :, :] = _image
 
@@ -609,10 +615,10 @@ class ProbeV2(ProbeV1):
         ]
         list_of_ylabels: List[str] = [
             "Molecule Numbers",
-            "Horizontal Width [mm]",
             "Vertical Width [mm]",
-            "Horizontal Centre [mm]",
+            "Horizontal Width [mm]",
             "Vertical Centre [mm]",
+            "Horizontal Centre [mm]",
             "Density [Molecules/m3]"
         ]
         list_of_yfactors: List[float] = [
@@ -704,7 +710,7 @@ class ProbeV2(ProbeV1):
         ax[0].errorbar(
             1e6*self.horizontal_temperature.x,
             1e6*self.horizontal_temperature.y,
-            yerr=1e6*_h_e,
+            yerr=np.abs(1e6*_h_e),
             fmt=self.fmt,
         )
         ax[0].plot(
@@ -715,7 +721,7 @@ class ProbeV2(ProbeV1):
         ax[1].errorbar(
             1e6*self.vertical_temperature.x,
             1e6*self.vertical_temperature.y,
-            yerr=1e6*_v_e,
+            yerr=np.abs(1e6*_v_e),
             fmt=self.fmt,
         )
         ax[1].plot(
