@@ -9,6 +9,8 @@ from .models import (
     GaussianFitWithoutOffset,
     ExponentialFitWithOffset,
     ExponentialFitWithoutOffset,
+    ExponentialFitWithOffset2,
+    ExponentialFitWithoutOffset2,
     GaussianFitWithoutOffset2D,
     GaussianFitWithOffset2D,
     LorentzianFitWithOffset,
@@ -134,7 +136,8 @@ def fit_gaussian_with_offset(
         popt, pcov = curve_fit(gaussian_with_offset, x, y, p0=p0, sigma=err)
         errors = np.sqrt(np.diag(pcov))
     except Exception as e:
-        print(f"Error {e} occured during fitting")
+        pass
+        #print(f"Error {e} occured during fitting")
     if popt is not None:
         x_fine = np.linspace(np.min(x), np.max(x), n_fine)
         y_fine = gaussian_with_offset(x_fine, *popt)
@@ -312,6 +315,101 @@ def fit_exponential_with_offset(
             centre_err=errors[1],
             rate_err=errors[2],
             offset_err=errors[3]
+        )
+    return fit
+
+
+def exponential_without_offset2(
+    x: float,
+    amplitude: float,
+    rate: float
+) -> float:
+    return amplitude*np.exp(-(x)/rate)
+
+
+def fit_exponential_without_offset2(
+    x: np.ndarray,
+    y: np.ndarray,
+    err: np.ndarray = None,
+    n_fine: int = 100
+) -> ExponentialFitWithoutOffset2:
+    a_trial = np.max(y)
+    r_trial = np.nanmean((-x)/np.log(y/a_trial))
+    p0 = [a_trial, r_trial]
+    fit, popt = None, None
+    try:
+        popt, pcov = curve_fit(
+            exponential_without_offset2, x, y, p0=p0, sigma=err
+        )
+        errors = np.sqrt(np.diag(pcov))
+    except Exception as e:
+        print(f"Error {e} occured during fitting")
+    if popt is not None:
+        x_fine = np.linspace(np.min(x), np.max(x), n_fine)
+        y_fine = exponential_without_offset2(x_fine, *popt)
+        func_str = "\n y = a*exp(-(x)/r)"
+        args_str = f"\n a: {popt[0]:e}\n r: {popt[1]:e}"
+        fit = ExponentialFitWithoutOffset2(
+            func_str=func_str,
+            args_str=args_str,
+            x=x,
+            y=y,
+            err=err,
+            x_fine=x_fine,
+            y_fine=y_fine,
+            amplitude=popt[0],
+            rate=popt[1],
+            amplitude_err=errors[0],
+            rate_err=errors[1]
+        )
+    return fit
+
+
+def exponential_with_offset2(
+    x: float,
+    amplitude: float,
+    rate: float,
+    offset: float
+) -> float:
+    return amplitude*np.exp(-(x)/rate)+offset
+
+
+def fit_exponential_with_offset2(
+    x: np.ndarray,
+    y: np.ndarray,
+    err: np.ndarray = None,
+    n_fine: int = 100
+) -> ExponentialFitWithOffset2:
+    a_trial = np.max(y)
+    r_trial = np.nanmean((-x)/np.log(y/a_trial))
+    o_trial = np.min(y)
+    p0 = [a_trial, r_trial, o_trial]
+    fit, popt = None, None
+    try:
+        popt, pcov = curve_fit(exponential_with_offset2, x, y, p0=p0, sigma=err)
+        errors = np.sqrt(np.diag(pcov))
+    except Exception as e:
+        print(f"Error {e} occured during fitting")
+    if popt is not None:
+        x_fine = np.linspace(np.min(x), np.max(x), n_fine)
+        y_fine = exponential_with_offset2(x_fine, *popt)
+        func_str = "\n y = a*exp(-(x)/r)+o"
+        args_str = f"\n a: {popt[0]:e}" + \
+            f"\n r: {popt[1]:e}\n o: {popt[2]:e}"
+        fit = ExponentialFitWithOffset2(
+            func_str=func_str,
+            args_str=args_str,
+            x=x,
+            y=y,
+            err=err,
+            x_fine=x_fine,
+            y_fine=y_fine,
+            amplitude=popt[0],
+            rate=popt[1],
+            offset=popt[2],
+            amplitude_err=errors[0],
+            rate_err=errors[1],
+            offset_err=errors[2]
         )
     return fit
 

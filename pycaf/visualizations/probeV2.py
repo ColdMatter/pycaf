@@ -142,6 +142,42 @@ class ProbeV2(ProbeV1):
         unique_params = np.array(unique_params)
         return unique_params, data_dict
 
+    def _get_unique_parameters_bgImage(
+        self,
+        file_start: int,
+        file_stop: int,
+        parameter: str
+    ) -> Tuple[np.ndarray, Dict[str, Union[int, float]]]:
+        params = []
+        for fileno in range(file_start, file_stop+1, 1):
+            _all_params = read_parameters_from_zip(
+                get_zip_archive(
+                    self.rootpath, self.year, self.month, self.day,
+                    fileno, self.prefix
+                )
+            )
+            _all_frequencies = read_frequencies_from_zip(
+                get_zip_archive(
+                    self.rootpath, self.year, self.month, self.day,
+                    fileno, self.prefix
+                )
+            )
+            _all_ad9959_frequencies = read_ad9959_frequencies_from_zip(
+                get_zip_archive(
+                    self.rootpath, self.year, self.month, self.day,
+                    fileno, self.prefix
+                )
+            )
+            _data_dict = _all_params | _all_frequencies
+            data_dict = _data_dict | _all_ad9959_frequencies
+            assert parameter in data_dict
+            if not data_dict[parameter] in params:
+                params.append(data_dict[parameter])
+            else:
+                break
+        unique_params = np.array(params)
+        return unique_params, data_dict
+
     def reset(self) -> Self:
         self.file_start: int = None
         self.file_stop: int = None
@@ -197,7 +233,9 @@ class ProbeV2(ProbeV1):
         file_start: int,
         file_stop: int,
         parameter: Union[str, List[str]],
-        discard_runs_upto: int = 0
+        discard_runs_upto: int = 0,
+        is_bg_included: bool = False,
+        is_norm_included: bool = False
     ) -> Self:
         self.reset()
         self.file_start = file_start
@@ -211,71 +249,185 @@ class ProbeV2(ProbeV1):
         _trial_img_dim = np.mean(_trial_imgs, axis=0).shape
         if type(parameter) is str or \
                 (type(parameter) is list and len(parameter) == 1):
-            self.unique_params, self.data_dict = \
-                self._get_unique_parameters(
-                    file_start, file_stop, parameter
+            if not is_bg_included:
+                self.unique_params, self.data_dict = \
+                    self._get_unique_parameters(
+                        file_start, file_stop, parameter
+                    )
+                self.n_params = len(self.unique_params)
+                self.n_iter = len(
+                    range(file_start, file_stop+1, 2*self.n_params)
                 )
-            self.n_params = len(self.unique_params)
-            self.n_iter = len(
-                range(file_start, file_stop+1, 2*self.n_params)
-            )
-            self.n_sets = self.n_iter
-            self.raw_images: np.ndarray = np.zeros(
-                (self.n_iter, self.n_params, *_trial_img_dim),
-                dtype=float
-            )
-            self.processed_images: np.ndarray = np.zeros(
-                (self.n_iter, self.n_params, *_trial_img_dim),
-                dtype=float
-            )
-            self.tofs: np.ndarray = np.zeros(
-                (self.n_iter, self.n_params, 1000),
-                dtype=float
-            )
-            for j in range(self.n_params):
-                for i, fileno in enumerate(
-                    range(file_start+2*j, file_stop+2*j+1, 2*self.n_params)
-                ):
-                    yag_on = read_images_from_zip(
-                        get_zip_archive(
-                            self.rootpath, self.year, self.month, self.day,
-                            fileno, self.prefix
-                        )
-                    )
-                    yag_off = read_images_from_zip(
-                        get_zip_archive(
-                            self.rootpath, self.year, self.month, self.day,
-                            fileno+1, self.prefix
-                        )
-                    )
-                    yag_on = yag_on[discard_runs_upto:]
-                    yag_off = yag_off[discard_runs_upto:]
-                    if len(yag_on) == len(yag_off):
-                        _image = np.mean(yag_on-yag_off, axis=0)
-                    else:
-                        _image = np.mean(
-                            yag_on-np.mean(yag_off, axis=0),
-                            axis=0
-                        )
-                    self.raw_images[i, j, :, :] = _image
-                    self.processed_images[i, j, :, :] = _image
-
-                    self.tof_sampling_rate, yag_on_tof = \
-                        read_time_of_flight_from_zip(
+                self.n_sets = self.n_iter
+                self.raw_images: np.ndarray = np.zeros(
+                    (self.n_iter, self.n_params, *_trial_img_dim),
+                    dtype=float
+                )
+                self.processed_images: np.ndarray = np.zeros(
+                    (self.n_iter, self.n_params, *_trial_img_dim),
+                    dtype=float
+                )
+                self.tofs: np.ndarray = np.zeros(
+                    (self.n_iter, self.n_params, 1000),
+                    dtype=float
+                )
+                for j in range(self.n_params):
+                    for i, fileno in enumerate(
+                        range(file_start+2*j, file_stop+2*j+1, 2*self.n_params)
+                    ):
+                        yag_on = read_images_from_zip(
                             get_zip_archive(
-                                self.rootpath,
-                                self.year, self.month, self.day,
+                                self.rootpath, self.year, self.month, self.day,
                                 fileno, self.prefix
                             )
                         )
-                    _, yag_off_tof = read_time_of_flight_from_zip(
-                        get_zip_archive(
-                            self.rootpath, self.year, self.month, self.day,
-                            fileno+1, self.prefix
+                        yag_off = read_images_from_zip(
+                            get_zip_archive(
+                                self.rootpath, self.year, self.month, self.day,
+                                fileno+1, self.prefix
+                            )
                         )
+                        yag_on = yag_on[discard_runs_upto:]
+                        yag_off = yag_off[discard_runs_upto:]
+                        if len(yag_on) == len(yag_off):
+                            _image = np.mean(yag_on-yag_off, axis=0)
+                        else:
+                            _image = np.mean(
+                                yag_on-np.mean(yag_off, axis=0),
+                                axis=0
+                            )
+                        self.raw_images[i, j, :, :] = _image
+                        self.processed_images[i, j, :, :] = _image
+
+                        self.tof_sampling_rate, yag_on_tof = \
+                            read_time_of_flight_from_zip(
+                                get_zip_archive(
+                                    self.rootpath,
+                                    self.year, self.month, self.day,
+                                    fileno, self.prefix
+                                )
+                            )
+                        _, yag_off_tof = read_time_of_flight_from_zip(
+                            get_zip_archive(
+                                self.rootpath, self.year, self.month, self.day,
+                                fileno+1, self.prefix
+                            )
+                        )
+                        if len(yag_on_tof) and len(yag_off_tof):
+                            self.tofs[i, j, :] = yag_on_tof - yag_off_tof
+            else:
+                if not is_norm_included:
+                    self.unique_params, self.data_dict = \
+                        self._get_unique_parameters_bgImage(
+                            file_start, file_stop, parameter
+                        )
+                    self.n_params = len(self.unique_params)
+                    self.n_iter = len(
+                        range(file_start, file_stop+1, self.n_params)
                     )
-                    if len(yag_on_tof) and len(yag_off_tof):
-                        self.tofs[i, j, :] = yag_on_tof - yag_off_tof
+                    self.n_sets = self.n_iter
+                    self.raw_images: np.ndarray = np.zeros(
+                        (self.n_iter, self.n_params, *_trial_img_dim),
+                        dtype=float
+                    )
+                    self.processed_images: np.ndarray = np.zeros(
+                        (self.n_iter, self.n_params, *_trial_img_dim),
+                        dtype=float
+                    )
+                    self.tofs: np.ndarray = np.zeros(
+                        (self.n_iter, self.n_params, 1000),
+                        dtype=float
+                    )
+                    for j in range(self.n_params):
+                        for i, fileno in enumerate(
+                            range(file_start+j, file_stop+j, self.n_params)
+                        ):
+                            _images = read_images_from_zip(
+                                get_zip_archive(
+                                    self.rootpath, self.year, self.month,
+                                    self.day, fileno, self.prefix
+                                )
+                            )
+                            # _images = _images[2*discard_runs_upto:]
+                            _img = _images[0::2]
+                            _bg = _images[1::2]
+                            try:
+                                _image = np.mean(_img - _bg, axis=0)
+                                self.raw_images[i, j, :, :] = _image
+                                self.processed_images[i, j, :, :] = _image
+                            except Exception as e:
+                                print(
+                                    f"Error {e} occured in file" +
+                                    f" {fileno} in Image"
+                                )
+                            self.tof_sampling_rate, yag_on_tof = \
+                                read_time_of_flight_from_zip(
+                                    get_zip_archive(
+                                        self.rootpath,
+                                        self.year, self.month, self.day,
+                                        fileno, self.prefix
+                                    )
+                                )
+                            if len(yag_on_tof):
+                                self.tofs[i, j, :] = yag_on_tof
+                else:
+                    self.unique_params, self.data_dict = \
+                        self._get_unique_parameters_bgImage(
+                            file_start, file_stop, parameter
+                        )
+                    self.n_params = len(self.unique_params)
+                    self.n_iter = len(
+                        range(file_start, file_stop+1, self.n_params)
+                    )
+                    self.n_sets = self.n_iter
+                    self.raw_images: np.ndarray = np.zeros(
+                        (self.n_iter, self.n_params, *_trial_img_dim),
+                        dtype=float
+                    )
+                    self.processed_images: np.ndarray = np.zeros(
+                        (self.n_iter, self.n_params, *_trial_img_dim),
+                        dtype=float
+                    )
+                    self.tofs: np.ndarray = np.zeros(
+                        (self.n_iter, self.n_params, 1000),
+                        dtype=float
+                    )
+                    for j in range(self.n_params):
+                        for i, fileno in enumerate(
+                            range(file_start+j, file_stop+j, self.n_params)
+                        ):
+                            _images = read_images_from_zip(
+                                get_zip_archive(
+                                    self.rootpath, self.year, self.month,
+                                    self.day, fileno, self.prefix
+                                )
+                            )
+                            # _images = _images[2*discard_runs_upto:]
+                            _img_norm = _images[0::3]
+                            _img = _images[1::3]
+                            _bg = _images[2::3]
+                            try:
+                                _image = np.mean(_img - _bg, axis=0)
+                                _image_norm = np.mean(_img_norm - _bg, axis=0)
+                                self.raw_images[i, j, :, :] = \
+                                    _image/_image_norm
+                                self.processed_images[i, j, :, :] = \
+                                    _image/_image_norm
+                            except Exception as e:
+                                print(
+                                    f"Error {e} occured in file " +
+                                    f"{fileno} in Image"
+                                )
+                            self.tof_sampling_rate, yag_on_tof = \
+                                read_time_of_flight_from_zip(
+                                    get_zip_archive(
+                                        self.rootpath,
+                                        self.year, self.month, self.day,
+                                        fileno, self.prefix
+                                    )
+                                )
+                            if len(yag_on_tof):
+                                self.tofs[i, j, :] = yag_on_tof
         return self
 
     def set_roi(
@@ -730,17 +882,17 @@ class ProbeV2(ProbeV1):
             "-r"
         )
         ax[0].set_title(
-            f"T_h: {1e6*_h_temp:.2f}+/-{1e6*_h_temp_err:.2f} uK"
+            f"T$_v$: {1e6*_h_temp:.2f}+/-{1e6*_h_temp_err:.2f} uK"
         )
         ax[1].set_title(
-            f"T_v: {1e6*_v_temp:.2f}+/-{1e6*_v_temp_err:.2f} uK"
+            f"T$_h$: {1e6*_v_temp:.2f}+/-{1e6*_v_temp_err:.2f} uK"
         )
-        ax[0].set_xlabel("Sq. expansion time [ms^2]")
-        ax[1].set_xlabel("Sq. expansion time [ms^2]")
-        ax[0].set_ylabel("Sq. horizontal width [mm^2]")
+        ax[0].set_xlabel("Sq. expansion time [ms$^2$]")
+        ax[1].set_xlabel("Sq. expansion time [ms$^2$]")
+        ax[0].set_ylabel("Sq. vertical width [mm$^2$]")
         ax[1].yaxis.set_label_position("right")
         ax[1].yaxis.tick_right()
-        ax[1].set_ylabel("Sq. vertical width [mm^2]")
+        ax[1].set_ylabel("Sq. horizontal width [mm$^2$]")
         return self
 
     def _plot_lifetime(
@@ -835,4 +987,62 @@ class ProbeV2(ProbeV1):
             self.display_vertical_centre_ylim = value
         if observable in density_aliases:
             self.display_density_ylim = value
+        return self
+
+    def single_shot_mot_lifetime(
+        self,
+        fileno,
+        row_start: int = 0,
+        row_end: int = -1,
+        col_start: int = 0,
+        col_end: int = -1,
+        n_iter: int = 0
+    ) -> Self:
+        _images = read_images_from_zip(
+            get_zip_archive(
+                self.rootpath, self.year, self.month,
+                self.day, fileno, self.prefix
+            )
+        )
+        _params = read_parameters_from_zip(
+            get_zip_archive(
+                self.rootpath, self.year, self.month,
+                self.day, fileno, self.prefix
+            )
+        )
+        n_images = int(_params["NumberOfMOTImages"])+1
+        if n_iter == 0:
+            n_iter = int(len(_images)/n_images)
+        t_sep = _params["ConsequtiveImageSeparation"]
+        start = _params["ImageAquireStart"]
+        t_array = 1e-2*np.array([start+i*t_sep for i in range(n_images-1)])
+        fractions = []
+        first_image = []
+        for i in range(1, n_iter):
+            one_mot_iter = _images[i*n_images:(i+1)*n_images, :, :]
+            one_mot_iter -= one_mot_iter[-1, :, :]
+            one_mot_iter = one_mot_iter[:,
+                                        row_start:row_end,
+                                        col_start:col_end]
+            first_image.append(one_mot_iter[0, :, :])
+            n = np.sum(one_mot_iter, axis=(1, 2))
+            n /= n[0]
+            n = n[:-1]
+            fractions.append(n)
+        fractions = np.array(fractions).reshape((n_iter-1, n_images-1))
+        fractions_mean = fractions.mean(axis=0)
+        fractions_err = fractions.std(axis=0)/np.sqrt(n_iter)
+        fit = fit_exponential_without_offset(
+            t_array,
+            fractions_mean
+        )
+        fig, ax = plt.subplots(1, 1, figsize=(8, 5))
+        ax.errorbar(t_array, fractions_mean, yerr=fractions_err, fmt="ok")
+        ax.plot(fit.x_fine, fit.y_fine, "-r")
+        ax.set_xlabel("CMOT Time [ms]")
+        ax.set_ylabel("MOT retaining fraction")
+        ax.set_title(f"MOT lifetime: {fit.rate:.2f} ms")
+        fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+        ax.imshow(np.array(first_image).mean(axis=0))
+        ax.grid(False)
         return self

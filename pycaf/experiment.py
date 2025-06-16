@@ -64,10 +64,44 @@ def move_laser_frequency(
     return None
 
 
+def set_gigatrons_frequency(
+    CaFBECHardwareController,
+    freq: float
+) -> float:
+    CaFBECHardwareController.SetGigatronicsFrequency(freq)
+    return None
+
+
+def set_gigatrons_amplitude(
+    CaFBECHardwareController,
+    amp: float
+) -> float:
+    CaFBECHardwareController.SetGigatronicsAmplitude(amp)
+    return None
+
+
+def save_gigatrons_parameters(
+    CaFBECHardwareController,
+    dirpath: str
+) -> None:
+    filename = "gigatrons_params.txt"
+    filepath = pathlib.Path(dirpath).joinpath(filename)
+    freq = CaFBECHardwareController.GetGigatronicsFrequency()
+    amp = CaFBECHardwareController.GetGigatronicsAmplitude()
+    write = {
+        "frequency": freq,
+        "amplitude": amp
+    }
+    with open(filepath, "w") as f:
+        f.write(json.dumps(write))
+    return None
+
+
 def run(
     Dictionary,
     String,
     Object,
+    CaFBECHardwareController,
     WavemeterLock,
     MOTMaster,
     lasers: List[str],
@@ -88,6 +122,19 @@ def run(
     except Exception as e:
         print(f"Error: {e} encountered")
     for i, state in enumerate(state_dims):
+        if state[0:9] == "gigatrons":
+            if state[10:] == "frequency":
+                set_gigatrons_frequency(
+                    CaFBECHardwareController,
+                    state_value[i]
+                )
+            elif state[10:] == "amplitude":
+                set_gigatrons_amplitude(
+                    CaFBECHardwareController,
+                    state_value[i]
+                )
+            else:
+                print("Error: gigatrons parameter not recognised.")
         if state[0:9] == "wavemeter":
             move_laser_frequency(
                 WavemeterLock,
@@ -106,6 +153,10 @@ def run(
         lasers,
         wavemeter_info_dirpath
     )
+    save_gigatrons_parameters(
+        CaFBECHardwareController,
+        wavemeter_info_dirpath
+    )
     if pre_callback is not None:
         pre_callback(state_dims, state_value, **kwargs)
     try:
@@ -122,6 +173,7 @@ def scan(
     Dictionary,
     String,
     Object,
+    CaFBECHardwareController,
     WavemeterLock,
     MOTMaster,
     lasers: List[str],
@@ -134,28 +186,53 @@ def scan(
     pre_callback: Callable = None,
     post_callback: Callable = None,
     interval: float = 0.01,
+    motmaster_parameter_doubles_with_values: Dict[str, List[Union[int, float]]] = None,
+    gigatrons: Dict[str, List[float]] = None,
     **kwargs
 ) -> None:
     state_dict = {}
+    if gigatrons is not None:
+        for key, value in gigatrons.items():
+            state_dict[f"gigatrons_{key}"] = value
     if lasers_with_frequencies is not None:
         for key, value in lasers_with_frequencies.items():
             state_dict[f"wavemeter_{key}"] = value
+
+    # for key, value in motmaster_parameters_with_values.items():
+    #     state_dict[f"motmaster_{key}"] = value
+    # state_dims = list(state_dict.keys())
+    # _state_space = []
+    # for item in product(*list(state_dict.values())):
+    #     _state_space.append(item)
+
+    state_dict_zip = {}  
+    if motmaster_parameter_doubles_with_values is not None:
+        for key, value in motmaster_parameter_doubles_with_values.items():
+            state_dict_zip[f"motmaster_{key}"] = value
     for key, value in motmaster_parameters_with_values.items():
         state_dict[f"motmaster_{key}"] = value
-    state_dims = list(state_dict.keys())
+    state_dims = list(state_dict_zip.keys()) + list(state_dict.keys())
     _state_space = []
-    for item in product(*list(state_dict.values())):
-        _state_space.append(item)
+    if motmaster_parameter_doubles_with_values is not None:
+        for item in product(list(zip(*list(state_dict_zip.values()))), *list(state_dict.values())):
+            _state_space.append(item)
+    else:
+        for item in product(*list(state_dict.values())):
+            _state_space.append(item)
+    _state_space_flattened = []
+    for entry in _state_space:
+        _state_space_flattened.append(tuple(item for element in entry for item in (element if isinstance(element, tuple) else (element,))))
+    
     state_space = []
     for _ in range(n_iter):
-        state_space.extend(_state_space)
+        state_space.extend(_state_space_flattened)
     for state_value in track(
         state_space,
         description='Running experiment...'
     ):
         run(
             Dictionary, String, Object,
-            WavemeterLock, MOTMaster,
+            CaFBECHardwareController, WavemeterLock, MOTMaster,
             lasers, root, wavemeter_info_dirpath, script,
             state_dims, state_value,
             pre_callback, post_callback, interval,
@@ -244,7 +321,11 @@ class Experiment():
             wavemeter_remote_path_id = kwargs["wavemeter_remote_path_id"]
         else:
             wavemeter_remote_path_id = self.default_remote_path_id
-        return motmaster_remote_path_id, wavemeter_remote_path_id
+        if "hardwarecontroller_remote_path_id" in kwargs:
+            hardwarecontroller_remote_path_id = kwargs["hardwarecontroller_remote_path_id"]
+        else:
+            hardwarecontroller_remote_path_id = self.default_remote_path_id
+        return motmaster_remote_path_id, wavemeter_remote_path_id, hardwarecontroller_remote_path_id
 
     def scan(
         self,
@@ -256,13 +337,14 @@ class Experiment():
         post_callback: Callable = None,
         **kwargs
     ) -> None:
-        mmrp_id, wmrp_id = self.get_remote_path_ids(**kwargs)
+        mmrp_id, wmrp_id, hcrp_id = self.get_remote_path_ids(**kwargs)
         _motmaster = self.__dict__[f"MOTMaster_{mmrp_id}"]
         _wavemeterlock = self.__dict__[f"WavemeterLock_{wmrp_id}"]
+        _hardwarecontroller = self.__dict__[f"CaFBECHardwareController_{hcrp_id}"]
         _lasers = self.config["edmsuite_modules"]["WavemeterLock"]["lasers"]
         scan(
             Dictionary, String, Object,
-            _wavemeterlock, _motmaster, _lasers[wmrp_id],
+            _hardwarecontroller, _wavemeterlock, _motmaster, _lasers[wmrp_id],
             self.root, self.wavemeter_info_path, script,
             motmaster_parameters_with_values, lasers_with_frequencies,
             n_iter, pre_callback, post_callback, self.interval,

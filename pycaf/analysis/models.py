@@ -82,6 +82,18 @@ class ExponentialFitWithOffset(ExponentialFitWithoutOffset):
     offset_err: float = None
 
 
+class ExponentialFitWithoutOffset2(Fit):
+    amplitude: float
+    rate: float
+    amplitude_err: float = None
+    rate_err: float = None
+
+
+class ExponentialFitWithOffset2(ExponentialFitWithoutOffset2):
+    offset: float
+    offset_err: float = None
+
+
 class GaussianFitWithoutOffset2D(Fit2D):
     amplitude: float
     centre: Tuple[float, float]

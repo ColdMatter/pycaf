@@ -12,6 +12,7 @@ from ..analysis import (
     read_images_from_zip,
     read_parameters_from_zip,
     read_frequencies_from_zip,
+    read_ad9959_frequencies_from_zip,
     calculate_cloud_size_from_image_1d_gaussian,
     fit_linear,
     fit_quadratic_without_slope,
@@ -247,6 +248,40 @@ class ProbeV1():
             params.append(data_dict[parameter])
         unique_params = list(set(params))
         unique_params.sort(reverse=np.sum(np.diff(params)) <= 0)
+        return unique_params, data_dict
+    
+    def get_unique_parameters_bgImage(
+        self,
+        file_start: int,
+        file_stop: int,
+        parameter: str
+    ) -> Tuple[np.ndarray, Dict[str, Union[int, float]]]:
+        params = []
+        for fileno in range(file_start, file_stop+1, 1):
+            _all_params = read_parameters_from_zip(
+                get_zip_archive(
+                    self.rootpath, self.year, self.month, self.day,
+                    fileno, self.prefix
+                )
+            )
+            _all_frequencies = read_frequencies_from_zip(
+                get_zip_archive(
+                    self.rootpath, self.year, self.month, self.day,
+                    fileno, self.prefix
+                )
+            )
+            _all_ad9959_frequencies = read_ad9959_frequencies_from_zip(
+                get_zip_archive(
+                    self.rootpath, self.year, self.month, self.day,
+                    fileno, self.prefix
+                )
+            )
+            _data_dict = _all_params | _all_frequencies
+            data_dict = _data_dict | _all_ad9959_frequencies
+            assert parameter in data_dict
+            if not data_dict[parameter] in params:
+                params.append(data_dict[parameter])
+        unique_params = np.array(params)
         return unique_params, data_dict
 
     def single_parameter_cloud_characterization(
@@ -1094,7 +1129,135 @@ class ProbeV1():
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
         ax.grid(False)
-        return imgs, n
+        return imgs, n, dn
+
+    def number_by_image_2d_bgImage(
+        self,
+        file_start: int,
+        file_stop: int,
+        parameters: List[str],
+        row_start: int = 0,
+        row_end: int = -1,
+        col_start: int = 0,
+        col_end: int = -1,
+        fitting: str = None,
+        param_index_fit_exclude: List[int] = [],
+        **kwargs
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        unique_params1, data_dict = self.get_unique_parameters_bgImage(
+            file_start, file_stop, parameters[0]
+        )
+        _, data_dict1 = self.get_unique_parameters_bgImage(
+            file_start, file_start, parameters[0]
+        )
+        _, data_dict2 = self.get_unique_parameters_bgImage(
+            file_start+1, file_start+1, parameters[0]
+        )
+
+        if data_dict1[parameters[0]] != data_dict2[parameters[0]]:
+            unique_params2, data_dict = self.get_unique_parameters_bgImage(
+                file_start, file_stop, parameters[1]
+            )
+        else:
+            unique_params2 = unique_params1
+            unique_params1, data_dict = self.get_unique_parameters_bgImage(
+                file_start, file_stop, parameters[1]
+            )
+            parameters[::-1]
+
+        _imgs = read_images_from_zip(
+            get_zip_archive(
+                self.rootpath, self.year, self.month, self.day,
+                file_start, self.prefix
+            )
+        )
+        imgs = np.zeros(
+            (
+                len(unique_params2),
+                len(unique_params1),
+                _imgs.shape[-2],
+                _imgs.shape[-1]
+            ),
+            dtype=float
+        )
+        n = np.zeros((len(unique_params2), len(unique_params1)))
+        dn = np.zeros((len(unique_params2), len(unique_params1)))
+        exposure_time = data_dict[self.exposure_time_param]*1e-5
+        number_multiplier = self.photon/(
+            exposure_time*self.constants["gamma"]
+            * self.constants["collection_solid_angle"]
+        )
+        for j in range(len(unique_params2)):
+            for k in range(len(unique_params1)):
+                _img_array: List[np.ndarray] = []
+                for i, fileno in enumerate(
+                    range(
+                        file_start+len(unique_params1)*j+k,
+                        file_stop+len(unique_params1)*j+k,
+                        len(unique_params1)*len(unique_params2)
+                    )
+                ):
+                    yag_on = read_images_from_zip(
+                        get_zip_archive(
+                            self.rootpath, self.year, self.month, self.day,
+                            fileno, self.prefix
+                        )
+                    )
+                    _img_array.append(
+                        np.mean(yag_on[::2] - yag_on[1::2], axis=0)
+                    )
+                img_array: np.ndarray = np.array(_img_array)
+                imgs[j, k, :, :] = img_array.mean(axis=0)
+                _n: np.ndarray = number_multiplier*np.sum(
+                    img_array[:, col_start:col_end, row_start:row_end],
+                    axis=(1, 2)
+                )
+                n[j, k] = _n.mean()
+                dn[j, k] = _n.std()/np.sqrt(i+1)
+
+        if "xscale" in kwargs:
+            xscale = kwargs["xscale"]
+        else:
+            xscale = 1.0
+        if "xoffset" in kwargs:
+            xoffset = kwargs["xoffset"]
+        else:
+            xoffset = 0.0
+        if "yscale" in kwargs:
+            yscale = kwargs["yscale"]
+        else:
+            yscale = 1.0
+        if "yoffset" in kwargs:
+            yoffset = kwargs["yoffset"]
+        else:
+            yoffset = 0.0
+        if "xlabel" in kwargs:
+            xlabel = kwargs["xlabel"]
+        else:
+            xlabel = parameters[0]
+        if "ylabel" in kwargs:
+            ylabel = kwargs["ylabel"]
+        else:
+            ylabel = parameters[1]
+        if "figsize" in kwargs:
+            figsize = kwargs["figsize"]
+        else:
+            figsize = (8, 5)
+        fig, ax = plt.subplots(1, 1, figsize=figsize)
+        im = ax.imshow(
+            n,
+            extent=(
+                (unique_params1[0]-xoffset)*xscale,
+                (unique_params1[-1]-xoffset)*xscale,
+                (unique_params2[-1]-yoffset)*yscale,
+                (unique_params2[0]-yoffset)*yscale
+            )
+        )
+        fig.colorbar(im, ax=ax)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.grid(False)
+        return imgs, n, dn
 
     def position_by_image(
         self,
