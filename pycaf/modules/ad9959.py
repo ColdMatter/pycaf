@@ -1,7 +1,10 @@
+from typing import Any, List
 import usb
 import time
 import usb.backend.libusb0 as libusb0
 import numpy as np
+import json
+import pathlib
 
 
 class AD9959(object):
@@ -942,5 +945,127 @@ def print_all_port_numbers_bus_numbers(idVendor=0x0456, idProduct=0xee25):
         )
     for i, d in enumerate(devs):
         print(
-            f"Device {i}, Port number: {d}, Bus number: {d.address}"
+            f"Device {i}, Port number: {d}, "+
+            f"Bus number: {d.address}"
         )
+
+
+def evalboard_address_to_board_map_finder(
+    bus_number:int = 0
+) -> None:
+    devs = list(
+        usb.core.find(
+            idVendor=0x0456,
+            idProduct=0xee25,
+            find_all=True,
+            backend=libusb0.get_backend()
+            )
+        )
+    for i, d in enumerate(devs):
+        print(f"Device {i}, Address: {d.address}")
+    freqs = [21e6 + i*10e6 for i in range(len(devs))]
+    for i, device in enumerate(devs):
+        ad9959_instance = AD9959(
+            bus_number=bus_number,
+            address=int(device.address)
+        )
+        ad9959_instance.toggle_amplitude_scaling(
+            channel=[0, 1, 2, 3],
+            amplitude_scaling=True
+        )
+        ad9959_instance.set_frequency(freqs[i], 3)
+        ad9959_instance.set_amplitude(0.2, 3)
+        print(
+            f"Address: {int(device.address)}, "+
+            f"Ch 3 frequency set: {freqs[i]/1e6:.3f} MHz with 0.2 amplitude")
+        del ad9959_instance
+
+def configure_evalboards(
+    config_path: str,
+    bus_number:int = 0
+) -> None:
+    with open(config_path, "r") as f:
+        config = json.load(f)
+    evalboard_config: dict[str, Any] = config["plugin_modules"]["evalboard_ad9959"]
+    board_to_address_map: dict[str, str] = evalboard_config["board_to_address_map"]
+    for boardno, address in board_to_address_map.items():
+        settings = evalboard_config[f"Board{boardno}"]
+        ad9959_instance = AD9959(bus_number=bus_number, address=int(address))
+        ad9959_instance.toggle_amplitude_scaling(
+            channel=[0, 1, 2, 3], amplitude_scaling=True
+        )
+        for channelno in range(4):
+            _ch_setting = settings[f"Channel{channelno}"]
+            freq = _ch_setting["frequency"]
+            amp = _ch_setting["amplitude"]
+            descr = _ch_setting["descr"]
+            ad9959_instance.set_frequency(freq, channelno)
+            ad9959_instance.set_amplitude(amp, channelno)
+            print(
+                f"Board: {boardno}, "+
+                f"Address: {address}, "+
+                f"Ch: {channelno}, "+
+                f"Frequency: {freq/1e6:.2f} MHz, "+
+                f"Amp: {amp:.2f}, Descr: {descr}"
+            )
+        del ad9959_instance
+
+
+def set_evalboard_channel(
+    config_path: str,
+    board: int,
+    channel: int,
+    frequency: float,
+    amplitude: float,
+    bus_number: int = 0
+) -> None:
+    with open(config_path, "r") as f:
+        config = json.load(f)
+    evalboard_config: dict[str, Any] = config["plugin_modules"]["evalboard_ad9959"]
+    board_to_address_map = evalboard_config["board_to_address_map"]
+    address: int = int(board_to_address_map[str(board)])
+    ad9959_instance = AD9959(bus_number=bus_number, address=address)
+    ad9959_instance.toggle_amplitude_scaling(channel=[0, 1, 2, 3], amplitude_scaling=True)
+    ad9959_instance.set_frequency(frequency, channel)
+    ad9959_instance.set_amplitude(amplitude, channel)
+    print(
+        f"Board: {board}, "+
+        f"Address: {address}, "+
+        f"Ch: {channel}, "+
+        f"Frequency: {frequency/1e6:.2f} MHz, "+
+        f"Amp: {amplitude:.2f}"
+    )
+    del ad9959_instance
+
+
+def set_evalboard(
+    config_path: str,
+    board: int,
+    frequencies: List[float],
+    amplitudes: List[float],
+    bus_number: int = 0,
+    save: bool = False
+) -> None:
+    with open(config_path, "r") as f:
+        config = json.load(f)
+    evalboard_config: dict[str, Any] = config["plugin_modules"]["evalboard_ad9959"]
+    board_to_address_map = evalboard_config["board_to_address_map"]
+    address: int = int(board_to_address_map[str(board)])
+    ad9959_instance = AD9959(bus_number=bus_number, address=address)
+    ad9959_instance.toggle_amplitude_scaling(channel=[0, 1, 2, 3], amplitude_scaling=True)
+    for channel in range(4):
+        ad9959_instance.set_frequency(frequencies[channel], channel)
+        ad9959_instance.set_amplitude(amplitudes[channel], channel)
+        print(
+            f"Board: {board}, "+
+            f"Address: {address}, "+
+            f"Ch: {channel}, "+
+            f"Frequency: {frequencies[channel]/1e6:.2f} MHz, "+
+            f"Amp: {amplitudes[channel]:.2f}"
+        )
+    if save:
+        dirpath = config["temp_wavemeter_info_path"]
+        filepath = pathlib.Path(dirpath).joinpath("evalboard.txt")
+        with open(filepath, "w") as f:
+            f.write(json.dumps({"board": board, "frequencies": frequencies, "amplitudes": amplitudes}))
+    del ad9959_instance

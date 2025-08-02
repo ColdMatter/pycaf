@@ -36,7 +36,8 @@ def fit_linear(
     s_trial = (y[-1]-y[0])/(x[-1]-x[0])
     i_trial = np.max(y) if s_trial < 0 else np.min(y)
     p0 = [s_trial, i_trial]
-    fit, popt = None, None
+    popt = None
+    fit = None
     try:
         popt, pcov = curve_fit(linear, x, y, p0=p0, sigma=err)
         errors = np.sqrt(np.diag(pcov))

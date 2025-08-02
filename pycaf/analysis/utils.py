@@ -8,6 +8,7 @@ import os
 import json
 import numpy as np
 from scipy.signal import savgol_filter
+from scipy.stats import median_abs_deviation as mad
 
 from .models import (
     Pattern,
@@ -401,6 +402,18 @@ def read_ad9959_frequencies_from_zip(
     return frequencies
 
 
+def read_all_parameter_data_from_zip(
+    archive: ZipFile,
+    close: bool = True
+) -> Dict[str, Any]:
+    _all_params = read_parameters_from_zip(archive, False)
+    _all_frequencies = read_frequencies_from_zip(archive, False)
+    _all_ad9959_frequencies = read_ad9959_frequencies_from_zip(archive)
+    _data_dict = _all_params | _all_frequencies
+    data_dict = _data_dict | _all_ad9959_frequencies
+    return data_dict
+
+
 def read_time_of_flight_from_zip(
     archive: ZipFile,
     close: bool = True
@@ -724,3 +737,173 @@ def convert_blue_mot_detuning_to_aom_frequencies(
     add9959_freq[B2_channel_no] = (B2_in_MHz, B2_amp)
     add9959_freq[B1m_channel_no] = (B1m_in_MHz, B1m_amp)
     return add9959_freq
+
+
+def shared_mad_filter_1d(parameters, *observables, threshold=3.5):
+    observables_stacked = np.stack(observables, axis=1)
+    med = np.median(observables_stacked, axis=0)
+    mad_vals = mad(observables_stacked, axis=0, scale='normal')
+    z_scores = np.abs((observables_stacked - med) / mad_vals)
+    outlier_mask = np.any(z_scores > threshold, axis=1)
+    inlier_mask = ~outlier_mask
+    filtered = [arr[inlier_mask] for arr in (parameters, *observables)]
+    return filtered
+
+
+def shared_mad_filter_2d(parameter1, parameter2, *observables, threshold=3.5):
+    parameter1 = np.asarray(parameter1)
+    parameter2 = np.asarray(parameter2)
+    observables = tuple(np.asarray(obs) for obs in observables)
+    observables_stacked = np.stack(observables, axis=1)
+    med = np.median(observables_stacked, axis=0)
+    mad_vals = mad(observables_stacked, axis=0, scale='normal')
+    mad_vals[mad_vals == 0] = 1e-12
+    z_scores = np.abs((observables_stacked - med) / mad_vals)
+    outlier_mask = np.any(z_scores > threshold, axis=1)
+    inlier_mask = ~outlier_mask
+    filtered = [arr[inlier_mask] for arr in (parameter1, parameter2, *observables)]
+    return filtered
+
+
+def groupby1d_bootstrap(
+    parameters: np.ndarray,
+    values: np.ndarray,
+    bootstrap=True,
+    n_bootstrap=1000
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    parameters = np.asarray(parameters)
+    values = np.asarray(values)
+    unique_params, inv_idx = np.unique(parameters, return_inverse=True)
+    num_groups = len(unique_params)
+    values_mean = np.zeros(num_groups)
+    values_err = np.zeros(num_groups)
+    all_bootstrap_samples = []
+    for i in range(num_groups):
+        mask = inv_idx == i
+        group_values = values[mask]
+        if bootstrap:
+            means = []
+            for _ in range(n_bootstrap):
+                sample = np.random.choice(group_values, size=len(group_values), replace=True)
+                means.append(np.mean(sample))
+            means = np.array(means)
+            values_mean[i] = np.mean(means)
+            values_err[i] = np.std(means)
+            all_bootstrap_samples.append(means)
+        else:
+            values_mean[i] = np.mean(group_values)
+            values_err[i] = np.std(group_values) / np.sqrt(len(group_values))
+            all_bootstrap_samples.append(group_values)
+    return unique_params, values_mean, values_err, all_bootstrap_samples
+
+
+def groupby_data_1d(
+    parameters: np.ndarray,
+    rel_numbers: np.ndarray,
+    v_widths: np.ndarray,
+    h_widths: np.ndarray,
+    v_centres: np.ndarray,
+    h_centres: np.ndarray,
+    threshold: float = 3.5,
+    bootstrap: bool = True,
+    n_bootstrap: int = 1000,
+):
+    parameters = np.asarray(parameters)
+    rel_numbers = np.asarray(rel_numbers)
+    v_widths = np.asarray(v_widths)
+    h_widths = np.asarray(h_widths)
+    v_centres = np.asarray(v_centres)
+    h_centres = np.asarray(h_centres)
+    parameters, rel_numbers, v_widths, h_widths, v_centres, h_centres = shared_mad_filter_1d(
+        parameters, rel_numbers, v_widths, h_widths, v_centres, h_centres, threshold=threshold
+    )
+    group = lambda x: groupby1d_bootstrap(parameters, x, bootstrap, n_bootstrap)
+    unique_params, number_mean, number_err, _ = group(rel_numbers)
+    _, v_widths_mean, v_widths_err, _ = group(v_widths)
+    _, h_widths_mean, h_widths_err, _ = group(h_widths)
+    _, v_centres_mean, v_centres_err, _ = group(v_centres)
+    _, h_centres_mean, h_centres_err, _ = group(h_centres)
+    return (
+        unique_params, number_mean, number_err,
+        v_widths_mean, v_widths_err,
+        h_widths_mean, h_widths_err,
+        v_centres_mean, v_centres_err,
+        h_centres_mean, h_centres_err
+    )
+
+
+def groupby2d_bootstrap(
+    parameter1: np.ndarray,
+    parameter2: np.ndarray,
+    values: np.ndarray,
+    bootstrap: bool = True,
+    n_bootstrap: int = 1000
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, List[List[np.ndarray]]]:
+    parameter1 = np.asarray(parameter1)
+    parameter2 = np.asarray(parameter2)
+    values = np.asarray(values)
+
+    unique_p1 = np.unique(parameter1)
+    unique_p2 = np.unique(parameter2)
+
+    num_p1 = len(unique_p1)
+    num_p2 = len(unique_p2)
+
+    mean_2d = np.full((num_p1, num_p2), np.nan)
+    err_2d = np.full((num_p1, num_p2), np.nan)
+    all_bootstrap_samples = [[[] for _ in range(num_p2)] for _ in range(num_p1)]
+
+    for i, p1 in enumerate(unique_p1):
+        for j, p2 in enumerate(unique_p2):
+            mask = (parameter1 == p1) & (parameter2 == p2)
+            group_values = values[mask]
+
+            if group_values.size == 0:
+                continue
+
+            if bootstrap:
+                means = []
+                for _ in range(n_bootstrap):
+                    sample = np.random.choice(group_values, size=len(group_values), replace=True)
+                    means.append(np.mean(sample))
+                means = np.array(means)
+                mean_2d[i, j] = np.mean(means)
+                err_2d[i, j] = np.std(means)
+                all_bootstrap_samples[i][j] = means
+            else:
+                mean_2d[i, j] = np.mean(group_values)
+                err_2d[i, j] = np.std(group_values) / np.sqrt(len(group_values))
+                all_bootstrap_samples[i][j] = group_values
+
+    return unique_p1, unique_p2, mean_2d, err_2d, all_bootstrap_samples
+
+
+def groupby_data_2d(
+    parameter1: np.ndarray,
+    parameter2: np.ndarray,
+    rel_numbers: np.ndarray,
+    v_widths: np.ndarray,
+    h_widths: np.ndarray,
+    v_centres: np.ndarray,
+    h_centres: np.ndarray,
+    threshold: float,
+    bootstrap: bool = True,
+    n_bootstrap: int = 1000
+):
+    parameter1, parameter2, rel_numbers, v_widths, h_widths, v_centres, h_centres = shared_mad_filter_2d(
+        parameter1, parameter2, rel_numbers, v_widths, h_widths, v_centres, h_centres,
+        threshold=threshold
+    )
+    group = lambda x: groupby2d_bootstrap(parameter1, parameter2, x, bootstrap=bootstrap, n_bootstrap=n_bootstrap)
+    unique_p1, unique_p2, number_mean, number_err, _ = group(rel_numbers)
+    _, _, v_widths_mean, v_widths_err, _ = group(v_widths)
+    _, _, h_widths_mean, h_widths_err, _ = group(h_widths)
+    _, _, v_centres_mean, v_centres_err, _ = group(v_centres)
+    _, _, h_centres_mean, h_centres_err, _ = group(h_centres)
+    return (
+        unique_p1, unique_p2, number_mean, number_err,
+        v_widths_mean, v_widths_err,
+        h_widths_mean, h_widths_err,
+        v_centres_mean, v_centres_err,
+        h_centres_mean, h_centres_err
+    )

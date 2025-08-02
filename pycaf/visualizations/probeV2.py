@@ -5,6 +5,7 @@ from matplotlib.patches import Rectangle
 import numpy as np
 import json
 import scipy.constants as cn
+from scipy.ndimage import gaussian_filter
 
 from ..analysis.models import (
     Fit,
@@ -192,12 +193,15 @@ class ProbeV2(ProbeV1):
         self.display_density_ylim: Tuple[float, float] = None
         self.raw_images: np.ndarray = None
         self.processed_images: np.ndarray = None
+        self.processed_images_2: np.ndarray = None
         self.horizontal_fits: Dict[str, GaussianFitWithOffset] = {}
         self.vertical_fits: Dict[str, GaussianFitWithOffset] = {}
         self.tofs: np.ndarray = None
         self.tof_sampling_rate: int = None
         self.number: np.ndarray = None
         self.number_err: np.ndarray = 0.0
+        self.number_full: np.ndarray = None
+        self.number_full_err: np.ndarray = 0.0
         self.number_fit: Fit = None
         self.horizontal_width: np.ndarray = None
         self.horizontal_width_err: np.ndarray = 0.0
@@ -298,7 +302,6 @@ class ProbeV2(ProbeV1):
                             )
                         self.raw_images[i, j, :, :] = _image
                         self.processed_images[i, j, :, :] = _image
-
                         self.tof_sampling_rate, yag_on_tof = \
                             read_time_of_flight_from_zip(
                                 get_zip_archive(
@@ -388,6 +391,10 @@ class ProbeV2(ProbeV1):
                         (self.n_iter, self.n_params, *_trial_img_dim),
                         dtype=float
                     )
+                    self.processed_images_2: np.ndarray = np.zeros(
+                        (self.n_iter, self.n_params, *_trial_img_dim),
+                        dtype=float
+                    )
                     self.tofs: np.ndarray = np.zeros(
                         (self.n_iter, self.n_params, 1000),
                         dtype=float
@@ -407,12 +414,16 @@ class ProbeV2(ProbeV1):
                             _img = _images[1::3]
                             _bg = _images[2::3]
                             try:
-                                _image = np.mean(_img - _bg, axis=0)
                                 _image_norm = np.mean(_img_norm - _bg, axis=0)
+                                _image = np.mean(_img - _bg, axis=0)
+                                _image_norm[_image_norm <= 0] = 1e-10
+                                _image[_image <= 0] = 1e-10
                                 self.raw_images[i, j, :, :] = \
-                                    _image/_image_norm
+                                    _image_norm
                                 self.processed_images[i, j, :, :] = \
-                                    _image/_image_norm
+                                    _image
+                                self.processed_images_2[i, j, :, :] = \
+                                    _image_norm
                             except Exception as e:
                                 print(
                                     f"Error {e} occured in file " +
@@ -443,6 +454,9 @@ class ProbeV2(ProbeV1):
         self.col_end = col_end
         self.processed_images = \
             self.processed_images[:, :, col_start:col_end, row_start:row_end]
+        if self.processed_images_2:
+            self.processed_images_2 = \
+                self.processed_images_2[:, :, col_start:col_end, row_start:row_end]
         return self
 
     def exclude_parameters_by_index(
@@ -474,18 +488,27 @@ class ProbeV2(ProbeV1):
         number_multiplier = self.photon/(
             exposure_time*self.gamma*self.collection_solid_angle
         )
-        _n: np.ndarray = number_multiplier*np.sum(
+        _n: np.ndarray = number_multiplier*np.nansum(
             self.processed_images,
             axis=(-1, -2)
         )
-        self.number = _n.mean(axis=0)
-        self.number_err = _n.std(axis=0)/np.sqrt(self.n_iter)
+        self.number = np.nanmean(_n, axis=0)
+        self.number_err = np.nanstd(_n, axis=0)/np.sqrt(self.n_iter)
+        if self.processed_images_2:
+            _n1: np.ndarray = number_multiplier*np.nansum(
+                self.processed_images_2,
+                axis=(-1, -2)
+            )
+            self.number_full = np.nanmean(_n/_n1, axis=0)
+            self.number_full_err = np.nanstd(_n/_n1, axis=0)/np.sqrt(self.n_iter)
         return self
 
     def extract_shape(
         self,
         n_combine: int,
-        combination_type: str = "sum"
+        combination_type: str = "sum",
+        is_filter: bool = False,
+        sigma_blur: float = 1.0
     ) -> Self:
         self.n_sets = int(self.n_iter/n_combine)
         self.horizontal_width = np.zeros((self.n_sets, self.n_params))
@@ -502,6 +525,8 @@ class ProbeV2(ProbeV1):
                         _img = self.processed_images[
                             i*n_combine:(i+1)*n_combine, j, :, :
                         ].mean(axis=0)
+                    if is_filter:
+                        _img = gaussian_filter(_img, sigma=sigma_blur)
                     v_fit, h_fit = \
                         calculate_cloud_size_from_image_1d_gaussian(
                             _img,
@@ -527,10 +552,12 @@ class ProbeV2(ProbeV1):
     def extract_density(
         self,
         n_combine: int,
-        combination_type: str = "sum"
+        combination_type: str = "sum",
+        is_filter: bool = False,
+        sigma_blur: float = 1.0
     ) -> Self:
         self.extract_number()
-        self.extract_shape(n_combine, combination_type)
+        self.extract_shape(n_combine, combination_type, is_filter, sigma_blur)
         w_horiz = self.horizontal_width.mean(axis=0)
         w_horiz_err = self.horizontal_width.std(axis=0)/np.sqrt(self.n_sets)
         w_vert = self.vertical_width.mean(axis=0)
@@ -547,9 +574,11 @@ class ProbeV2(ProbeV1):
     def extract_temperature(
         self,
         n_combine: int,
-        combination_type: str = "sum"
+        combination_type: str = "sum",
+        is_filter: bool = False,
+        sigma_blur: float = 1.0
     ) -> Self:
-        self.extract_shape(n_combine, combination_type)
+        self.extract_shape(n_combine, combination_type, is_filter, sigma_blur)
         self.horizontal_temperature = fit_linear(
             (self.unique_params*1e-5)**2,
             self.horizontal_width.mean(axis=0)**2,
@@ -968,6 +997,13 @@ class ProbeV2(ProbeV1):
         value: str
     ) -> Self:
         self.xlabel = value
+        return self
+    
+    def set_ylabel(
+        self,
+        value: str
+    ) -> Self:
+        self.ylabel = value
         return self
 
     def set_ylim(

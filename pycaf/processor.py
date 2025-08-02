@@ -353,7 +353,7 @@ class Processor():
         df_zscore['_idx'] = df_list['_idx']
         df_new = df.join(df_zscore.explode(['N', 'hWidth', 'vWidth', 'hCtr', 'vCtr', 'density', '_idx']).set_index('_idx'), rsuffix='_z')
         df_new.drop('_idx', axis=1, inplace=True)
-        idx_names = df_new[(np.abs(df_new['N_z']) > z_threshold)].index
+        idx_names = df_new[((np.abs(df_new['N_z']) > z_threshold) | (np.abs(df_new['hCtr_z']) > z_threshold) | (np.abs(df_new['vCtr_z']) > z_threshold))].index
         df_final = df_new.drop(idx_names)
         return df_final
 

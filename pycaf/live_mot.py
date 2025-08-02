@@ -46,7 +46,7 @@ class LiveMOT(Experiment):
         crop_col_end: int = -1
     ) -> None:
         super().__init__(config_path, interval)
-        super().connect()
+        #super().connect()
         self.image_dirpath = self.config["temp_image_path"]
         self.script = script
         self.timegap_in_ms = timegap_in_ms

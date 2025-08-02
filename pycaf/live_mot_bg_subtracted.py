@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, List
 import numpy as np
 from PIL import Image
 import os
@@ -33,19 +33,17 @@ class LiveMOTBGSubtracted(Experiment):
         self,
         config_path: str,
         interval: Union[int, float],
-        script: str,
-        parameter: str,
-        on_value: Union[int, float],
-        off_value: Union[int, float],
+        scripts: List[str],
+        parameters: List[str],
+        values: List[Union[int, float]],
         iteration: int = 5,
         color_max: int = 50
     ) -> None:
         super().__init__(config_path, interval)
         self.image_dirpath = self.config["temp_image_path"]
-        self.script = script
-        self.parameter = parameter
-        self.on_value = on_value
-        self.off_value = off_value
+        self.scripts = scripts
+        self.parameters = parameters
+        self.values = values
         self.iteration = iteration
         self.color_max = color_max
         self.old_color_max = color_max
@@ -112,57 +110,49 @@ class LiveMOTBGSubtracted(Experiment):
         self.bnext.on_clicked(self.up)
         self.bprev.on_clicked(self.down)
         self.bstop.on_clicked(self.toggle_pause)
-        self._call_motmaster_and_analyse_image()
-        _img = self.ax.imshow(self.image)
-        _img.set_clim(0, self.color_max)
-        self.fig.canvas.draw()
-        self.fig.suptitle(
-            f"Frame no. : {frame} with color max {self.color_max}"
-        )
-        self.fig.canvas.flush_events()
-        time.sleep(self.interval)
-        return None
-
-    def _call_motmaster_and_analyse_image(
-        self
-    ) -> None:
-        for _ in range(self.iteration):
-            self.motmaster_single_run(
-                self.script, self.parameter, self.on_value
+        for k in range(len(self.scripts)):
+            self.scan(
+                self.scripts[k],
+                motmaster_parameters_with_values={
+                    self.parameters[k]: [self.values[k]]
+                },
+                n_iter=1
             )
-            self.motmaster_single_run(
-                self.script, self.parameter, self.off_value
+            try:
+                images = self.read_images()
+            except Exception as e:
+                print(f"Exception {e} occured in during reading images")
+            try:
+                self.delete_images()
+            except Exception as e:
+                print(f"Exception {e} occured in during deleting images")
+            if len(images) >= 2:
+                _image = images[0::2, :, :] - images[1::2, :, :]
+                self.image = np.sum(_image, axis=0)
+            _img = self.ax.imshow(self.image)
+            _img.set_clim(0, self.color_max)
+            self.fig.canvas.draw()
+            self.fig.suptitle(
+                f"{self.scripts[k]}:{self.parameters[k]}->{self.values[k]} with cmax: {self.color_max}"
             )
-        try:
-            images = self.read_images()
-        except Exception as e:
-            print(f"Exception {e} occured in during reading images")
-        try:
-            self.delete_images()
-        except Exception as e:
-            print(f"Exception {e} occured in during deleting images")
-        if len(images) >= 2:
-            _image = images[0::2, :, :] - images[1::2, :, :]
-            self.image = np.sum(_image, axis=0)
-        time.sleep(0.1)
+            self.fig.canvas.flush_events()
+            time.sleep(self.interval)
         return None
-
+        
 
 if __name__ == "__main__":
     config_path = "C:\\ControlPrograms\\pycaf\\config_bec.json"
     interval = 0.1
-    script = "MOTBasic"
-    parameter = "yagONorOFF"
-    on_value = 10.0
-    off_value = 1.0
+    scripts = ["AMOTBasic", "AMOTBasic"]
+    parameters = ["yagONorOFF", "yagONorOFF"]
+    values = [10.0, 1.0]
     iteration = 1
     live_mot = LiveMOTBGSubtracted(
         config_path=config_path,
         interval=interval,
-        script=script,
-        parameter=parameter,
-        on_value=on_value,
-        off_value=off_value,
+        scripts=scripts,
+        parameters=parameters,
+        values=values,
         iteration=iteration,
         color_max=100
     )

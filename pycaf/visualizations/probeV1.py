@@ -1053,6 +1053,7 @@ class ProbeV1():
             exposure_time*self.constants["gamma"]
             * self.constants["collection_solid_angle"]
         )
+        tally = []
         for j in range(len(unique_params2)):
             for k in range(len(unique_params1)):
                 _img_array: List[np.ndarray] = []
@@ -1086,6 +1087,7 @@ class ProbeV1():
                 )
                 n[j, k] = _n.mean()
                 dn[j, k] = _n.std()/np.sqrt(i+1)
+                tally.append([unique_params1[k], unique_params2[j], n])
 
         if "xscale" in kwargs:
             xscale = kwargs["xscale"]
@@ -1115,8 +1117,8 @@ class ProbeV1():
             figsize = kwargs["figsize"]
         else:
             figsize = (8, 5)
-        fig, ax = plt.subplots(1, 1, figsize=figsize)
-        im = ax.imshow(
+        fig, ax = plt.subplots(2, 1, figsize=figsize)
+        im = ax[0].imshow(
             n,
             extent=(
                 (unique_params1[0]-xoffset)*xscale,
@@ -1125,11 +1127,21 @@ class ProbeV1():
                 (unique_params2[0]-yoffset)*yscale
             )
         )
-        fig.colorbar(im, ax=ax)
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
-        ax.grid(False)
-        return imgs, n, dn
+        ax[1].imshow(
+            dn,
+            extent=(
+                (unique_params1[0]-xoffset)*xscale,
+                (unique_params1[-1]-xoffset)*xscale,
+                (unique_params2[-1]-yoffset)*yscale,
+                (unique_params2[0]-yoffset)*yscale
+            )
+        )
+        fig.colorbar(im, ax=ax[0])
+        for iax in ax:
+            iax.set_xlabel(xlabel)
+            iax.set_ylabel(ylabel)
+            iax.grid(False)
+        return imgs, n, dn, tally
 
     def number_by_image_2d_bgImage(
         self,
@@ -1187,6 +1199,7 @@ class ProbeV1():
             exposure_time*self.constants["gamma"]
             * self.constants["collection_solid_angle"]
         )
+        tally = []
         for j in range(len(unique_params2)):
             for k in range(len(unique_params1)):
                 _img_array: List[np.ndarray] = []
@@ -1214,6 +1227,7 @@ class ProbeV1():
                 )
                 n[j, k] = _n.mean()
                 dn[j, k] = _n.std()/np.sqrt(i+1)
+                tally.append([unique_params1[k], unique_params2[j], n[j, k]])
 
         if "xscale" in kwargs:
             xscale = kwargs["xscale"]
@@ -1243,8 +1257,8 @@ class ProbeV1():
             figsize = kwargs["figsize"]
         else:
             figsize = (8, 5)
-        fig, ax = plt.subplots(1, 1, figsize=figsize)
-        im = ax.imshow(
+        fig, ax = plt.subplots(2, 1, figsize=figsize)
+        im = ax[0].imshow(
             n,
             extent=(
                 (unique_params1[0]-xoffset)*xscale,
@@ -1253,11 +1267,219 @@ class ProbeV1():
                 (unique_params2[0]-yoffset)*yscale
             )
         )
-        fig.colorbar(im, ax=ax)
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
-        ax.grid(False)
-        return imgs, n, dn
+        ax[1].imshow(
+            dn,
+            extent=(
+                (unique_params1[0]-xoffset)*xscale,
+                (unique_params1[-1]-xoffset)*xscale,
+                (unique_params2[-1]-yoffset)*yscale,
+                (unique_params2[0]-yoffset)*yscale
+            )
+        )
+        fig.colorbar(im, ax=ax[0])
+        for iax in ax:
+            iax.set_xlabel(xlabel)
+            iax.set_ylabel(ylabel)
+            iax.grid(False)
+        return imgs, n, dn, tally
+    
+    def shape_by_image_2d_bgImage(
+        self,
+        file_start: int,
+        file_stop: int,
+        parameters: List[str],
+        n_combine: int = 1,
+        row_start: int = 0,
+        row_end: int = -1,
+        col_start: int = 0,
+        col_end: int = -1,
+        fitting: str = None,
+        param_index_fit_exclude: List[int] = [],
+        **kwargs
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        unique_params1, data_dict = self.get_unique_parameters_bgImage(
+            file_start, file_stop, parameters[0]
+        )
+        _, data_dict1 = self.get_unique_parameters_bgImage(
+            file_start, file_start, parameters[0]
+        )
+        _, data_dict2 = self.get_unique_parameters_bgImage(
+            file_start+1, file_start+1, parameters[0]
+        )
+
+        if data_dict1[parameters[0]] != data_dict2[parameters[0]]:
+            unique_params2, data_dict = self.get_unique_parameters_bgImage(
+                file_start, file_stop, parameters[1]
+            )
+        else:
+            unique_params2 = unique_params1
+            unique_params1, data_dict = self.get_unique_parameters_bgImage(
+                file_start, file_stop, parameters[1]
+            )
+            parameters[::-1]
+
+        _imgs = read_images_from_zip(
+            get_zip_archive(
+                self.rootpath, self.year, self.month, self.day,
+                file_start, self.prefix
+            )
+        )
+        n_iter = len(range(file_start, file_stop+1, len(unique_params2)*len(unique_params1)))
+        n_sets = int(n_iter/n_combine)
+        imgs = np.zeros(
+            (
+                len(unique_params2),
+                len(unique_params1),
+                n_iter,
+                _imgs.shape[-2],
+                _imgs.shape[-1]
+            ),
+            dtype=float
+        )
+        
+        n = np.zeros((len(unique_params2), len(unique_params1)))
+        dn = np.zeros((len(unique_params2), len(unique_params1)))
+        exposure_time = data_dict[self.exposure_time_param]*1e-5
+        number_multiplier = self.photon/(
+            exposure_time*self.constants["gamma"]
+            * self.constants["collection_solid_angle"]
+        )
+        horizontal_width = np.zeros((len(unique_params2),len(unique_params1), n_sets))
+        horizontal_centre = np.zeros((len(unique_params2),len(unique_params1), n_sets))
+        vertical_width = np.zeros((len(unique_params2),len(unique_params1), n_sets))
+        vertical_centre = np.zeros((len(unique_params2),len(unique_params1), n_sets))
+        tally = []
+        for j in range(len(unique_params2)):
+            for k in range(len(unique_params1)):
+                _img_array: List[np.ndarray] = []
+                for i, fileno in enumerate(
+                    range(
+                        file_start+len(unique_params1)*j+k,
+                        file_stop+len(unique_params1)*j+k,
+                        len(unique_params1)*len(unique_params2)
+                    )
+                ):
+                    yag_on = read_images_from_zip(
+                        get_zip_archive(
+                            self.rootpath, self.year, self.month, self.day,
+                            fileno, self.prefix
+                        )
+                    )
+                    _img_array.append(
+                        np.mean(yag_on[::2] - yag_on[1::2], axis=0)
+                    )
+                img_array: np.ndarray = np.array(_img_array)
+                imgs[j, k, :, :, :] = img_array
+                for i in range(n_sets):
+                    try:
+                        _img = imgs[
+                                j, k, i*n_combine:(i+1)*n_combine, :, :
+                            ].sum(axis=0)
+                        h_fit, v_fit = \
+                            calculate_cloud_size_from_image_1d_gaussian(
+                                _img,
+                                pixel_size=self.constants["pixel_size"],
+                                bin_size=self.constants["binning"],
+                                magnification=self.constants["magnification"]
+                            )
+                        #self.horizontal_fits[f"({i}, {j})"] = h_fit
+                        #self.vertical_fits[f"({i}, {j})"] = v_fit
+                        if h_fit is not None:
+                            horizontal_width[j, k, i] = h_fit.width
+                            horizontal_centre[j, k, i] = h_fit.centre
+                        if v_fit is not None:
+                            vertical_width[j, k, i] = v_fit.width
+                            vertical_centre[j, k, i] = v_fit.centre
+                    except Exception as e:
+                        file_no = file_start+j*len(unique_params1)+k+i*n_iter
+                        print(
+                            f"Error {e} occured in file {file_no} in size fit"
+                        )
+                tally.append([unique_params1[k], unique_params2[j], np.array(horizontal_width[j,k,:]).mean()])
+        horizontal_width_mean = 1e3*np.array(horizontal_width).mean(axis=2)
+        horizontal_centre_mean = 1e3*np.array(horizontal_centre).mean(axis=2)
+        vertical_width_mean = 1e3*np.array(vertical_width).mean(axis=2)
+        vertical_centre_mean = 1e3*np.array(vertical_centre).mean(axis=2)
+
+        if "xscale" in kwargs:
+            xscale = kwargs["xscale"]
+        else:
+            xscale = 1.0
+        if "xoffset" in kwargs:
+            xoffset = kwargs["xoffset"]
+        else:
+            xoffset = 0.0
+        if "yscale" in kwargs:
+            yscale = kwargs["yscale"]
+        else:
+            yscale = 1.0
+        if "yoffset" in kwargs:
+            yoffset = kwargs["yoffset"]
+        else:
+            yoffset = 0.0
+        if "xlabel" in kwargs:
+            xlabel = kwargs["xlabel"]
+        else:
+            xlabel = parameters[0]
+        if "ylabel" in kwargs:
+            ylabel = kwargs["ylabel"]
+        else:
+            ylabel = parameters[1]
+        if "figsize" in kwargs:
+            figsize = kwargs["figsize"]
+        else:
+            figsize = (8, 8)
+        fig, ax = plt.subplots(2, 2, figsize=figsize)
+        im00 = ax[0][0].imshow(
+            horizontal_width_mean,
+            extent=(
+                (unique_params1[0]-xoffset)*xscale,
+                (unique_params1[-1]-xoffset)*xscale,
+                (unique_params2[-1]-yoffset)*yscale,
+                (unique_params2[0]-yoffset)*yscale
+            )
+        )
+        ax[0][0].set_title("horizontal width")
+        im01 = ax[0][1].imshow(
+            vertical_width_mean,
+            extent=(
+                (unique_params1[0]-xoffset)*xscale,
+                (unique_params1[-1]-xoffset)*xscale,
+                (unique_params2[-1]-yoffset)*yscale,
+                (unique_params2[0]-yoffset)*yscale
+            )
+        )
+        ax[0][1].set_title("vertical width")
+        im10 = ax[1][0].imshow(
+            horizontal_centre_mean,
+            extent=(
+                (unique_params1[0]-xoffset)*xscale,
+                (unique_params1[-1]-xoffset)*xscale,
+                (unique_params2[-1]-yoffset)*yscale,
+                (unique_params2[0]-yoffset)*yscale
+            )
+        )
+        ax[1][0].set_title("horizontal centre")
+        im11 = ax[1][1].imshow(
+            vertical_centre_mean,
+            extent=(
+                (unique_params1[0]-xoffset)*xscale,
+                (unique_params1[-1]-xoffset)*xscale,
+                (unique_params2[-1]-yoffset)*yscale,
+                (unique_params2[0]-yoffset)*yscale
+            )
+        )
+        ax[1][1].set_title("vertical centre")
+        fig.colorbar(im00, ax=ax[0][0], location='right', shrink=0.8)
+        fig.colorbar(im01, ax=ax[0][1], location='right', shrink=0.8)
+        fig.colorbar(im10, ax=ax[1][0], location='right', shrink=0.8)
+        fig.colorbar(im11, ax=ax[1][1], location='right', shrink=0.8)
+        for iax in ax.flatten():
+            iax.set_xlabel(xlabel)
+            iax.set_ylabel(ylabel)
+            iax.grid(False)
+        fig.tight_layout()
+        return imgs, horizontal_width_mean, horizontal_centre_mean, vertical_width_mean, vertical_centre_mean, tally
 
     def position_by_image(
         self,
