@@ -54,7 +54,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 We would like to acknowledge the open-source community for creating and maintaining the essential Python libraries used in this project. Their efforts make data analysis with Python accessible and efficient for everyone.
 
 
-## Example Configuration file setup
+## Example Configuration file setup for Blackett Bay2 BEC experiment
 ```json
 {
     "edmsuite_modules":
@@ -65,7 +65,7 @@ We would like to acknowledge the open-source community for creating and maintain
                     "remote_paths":
                         {
                             "bay_2": "tcp://localhost:1187/controller.rem",
-                            "bay_3": "tcp://x.x.x.x:1187/controller.rem"
+                            "bay_3": "tcp://172.22.116.195:1187/controller.rem"
                         }
                 },
             "WavemeterLock":
@@ -74,17 +74,17 @@ We would like to acknowledge the open-source community for creating and maintain
                     "remote_paths": 
                         {
                             "bay_2": "tcp://localhost:1234/controller.rem",
-                            "bay_3": "tcp://x.x.x.x:5555/controller.rem"
+                            "bay_3": "tcp://172.22.116.195:5555/controller.rem"
                         },
                     "lasers":
                         {
-                            "bay_2": ["v00", "BX", "v10", "v21", "v32"],
-                            "bay_3": ["TCool"]
+                            "bay_2": ["v00", "BX", "v10", "Ref"],
+                            "bay_3": ["v2, v3"]
                         }
                 },
-            "CaFBECHadwareController":
+            "CaFBECHardwareController":
                 {
-                    "exe_path": "C:\\ControlPrograms\\EDMSuite\\CaFBECHadwareController\\bin\\CaFBEC\\CaFBECHadwareController.exe",
+                    "exe_path": "C:\\ControlPrograms\\EDMSuite\\CaFBECHardwareController\\bin\\CaFBEC\\CaFBECHardwareController.exe",
                     "remote_paths":
                         {
                             "bay_2": "tcp://localhost:1172/controller.rem"
@@ -110,7 +110,7 @@ We would like to acknowledge the open-source community for creating and maintain
             "picomotor":
                 {
                     "type": "pre",
-                    "connect": false,
+                    "connect": true,
                     "defaults": {
                         "motor": "CMH",
                         "speed": 50,
@@ -130,7 +130,37 @@ We would like to acknowledge the open-source community for creating and maintain
                             "Closer Mirror Vertical": 4
                         }
                 },
-            "evalboard_ad9959": {},
+            "evalboard_ad9959": {
+                    "board_to_address_map": {"1": "1", "2": "3", "3": "4", "4": "2"},
+                    "Board1":
+                        {
+                            "Channel0": {"frequency": 74.75e6, "amplitude": 0.48, "descr": "V00B1-AOM(BMOT)"},
+                            "Channel1": {"frequency": 73.58e6, "amplitude": 0.60, "descr": "V00B1-AOM(LMol)"},
+                            "Channel2": {"frequency": 75.5e6, "amplitude": 0.35, "descr": "V00B2AOM"},
+                            "Channel3": {"frequency": 76.5e6, "amplitude": 0.65, "descr": "V00R1+AOM(BMOT)"}
+                        },
+                    "Board2":
+                        {
+                            "Channel0": {"frequency": 100.0e6, "amplitude": 0.32, "descr": "BXAOM"},
+                            "Channel1": {"frequency": 26.0e6, "amplitude": 0.1, "descr": "BX26MHzEOM"},
+                            "Channel2": {"frequency": 4.0e6, "amplitude": 0.1, "descr": "BX4MHzEOM"},
+                            "Channel3": {"frequency": 76.5e6, "amplitude": 0.79, "descr": "V00R1+(RMOT)"}
+                        },
+                    "Board3":
+                        {
+                            "Channel0": {"frequency": 120.0e6, "amplitude": 0.40, "descr": "RepumpAOM"},
+                            "Channel1": {"frequency": 100.0e6, "amplitude": 0.50, "descr": "Repump100MHzEOM"},
+                            "Channel2": {"frequency": 4.0e6, "amplitude": 0.20, "descr": "Repump4MHzEOM"},
+                            "Channel3": {"frequency": 24.0e6, "amplitude": 0.18, "descr": "Repump24MHzEOM"}
+                        },
+                    "Board4":
+                        {
+                            "Channel0": {"frequency": 70.7e6, "amplitude": 0.0, "descr": ""},
+                            "Channel1": {"frequency": 70.7e6, "amplitude": 0.07, "descr": "V00R0EOM"},
+                            "Channel2": {"frequency": 101.0e6, "amplitude": 0.0, "descr": "BXAOM2"},
+                            "Channel3": {"frequency": 80.0e6, "amplitude": 0.32, "descr": "ODTAOM"}
+                        }
+                },
             "picoscope": {},
             "pfeiffer":
                 {
@@ -172,7 +202,8 @@ We would like to acknowledge the open-source community for creating and maintain
                 }
         },
     "script_root_path": "C:\\ControlPrograms\\EDMSuite\\BECMOTMasterScripts",
-    "data_root_path": "E:\\mot_master_data",
+    "data_root_path": "C:\\Users\\cafmot\\OneDrive - Imperial College London\\cafbec\\mot_master_data",
+    "processed_root_path": "C:\\Users\\cafmot\\OneDrive - Imperial College London\\cafbec\\processed",
     "temp_image_path": "C:\\Users\\cafmot\\Documents\\Temp_camera_images",
     "temp_tof_path": "C:\\Users\\cafmot\\Documents\\ToF_Data",
     "temp_wavemeter_info_path": "C:\\Users\\cafmot\\Documents\\ToF_Data",
@@ -182,14 +213,21 @@ We would like to acknowledge the open-source community for creating and maintain
         {
             "full_well_capacity": 140000.0,
             "bits_per_channel": 16.0,
-            "gamma": 1.5e6,
-            "collection_solid_angle": 0.016,
+            "gamma": 2.1e6,
+            "collection_solid_angle": 0.0072,
             "eta_q": 0.92,
-            "magnification": 1.42,
+            "magnification": 0.8,
             "pixel_size": 16e-6,
             "photon_to_electron": 2.2,
             "binning": 4,
-            "cs_exposure_time_parameter": "CameraTriggerDuration"
+            "cs_exposure_time_parameter": "CameraTriggerDuration",
+            "cs_camera_trigger_channel_name": "cameraTrigger",
+            "mass": 59,
+            "v00_set": "494.431890",
+            "v10_set": "476.958910",
+            "v21_set": "477.299380",
+            "v32_set": "477.628175",
+            "BX_set": "564.582285"
         }
 }
 ```
@@ -206,10 +244,10 @@ today = datetime.date.today()
 config_path = "C:\\ControlPrograms\\pycaf\\config_bec.json"
 
 expt = pycaf.Experiment(config_path=config_path, interval=0.1)
-probe = pycaf.Probe(config_path, today.year, today.month, today.day)
+probe = pycaf.ProbeV3(config_path, today.year, today.month, today.day)
 ```
 
-#### Run an experimet
+#### Run a single experimet
 ```python
 expt.scan(
     script="MOTBasic",
@@ -223,18 +261,32 @@ expt.scan(
 )
 ```
 
+#### Run multiple experimets iteratively
+```python
+expt.multi_scan(
+    scripts=["StackedCompressedMOT", "StackedLambdaMolassesRecapture"],
+    motmaster_parameters_with_values={
+        "MOTCompressionFieldValue": [3.0+i*0.5 for i in range(11)],
+    },
+    n_iter=10
+)
+```
+
 #### Analyse the experimental data
 ```python
-probe.number_by_image(
-    0, 10, "CameraTriggerStart",
-    row_start=40, row_end=70,
-    col_start=40, col_end=70,
-    xscale=1e-2,
-    yscale=1.0,
-    xlabel="CameraTriggerStart [ms]",
-    ylabel="Molecule number",
-    display_images=True,
-    grid=False,
-    show_roi=False
-)
+probe(
+    115, 204,
+    ["MOTCompressionDuration"],
+    is_bg_included=True,
+    only_number=True,
+    row_start=20, row_end=90,
+    col_start=20, col_end=100
+)\
+.exclude_parameters_by_index([0])\
+.set_xoffset(0.0)\
+.set_xscale(1e-2)\
+.set_xlabel("Compression duration [ms]")\
+.fit_number_variation(pycaf.analysis.fit_exponential_without_offset)\
+.display_variation()\
+.display_images()
 ```
