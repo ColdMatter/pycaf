@@ -316,18 +316,12 @@ class ProbeV3(ProbeV2):
                 )
             )
             raw_img = np.mean(
-                _images[0+self.discard_runs_upto::2] - 
-                _images[1+self.discard_runs_upto::2],
+                _images[self.discard_runs_upto:],
                 axis=0
             )
             processed_img = np.mean(
                 _images[
-                    0+self.discard_runs_upto::2,
-                    self.col_start:self.col_end,
-                    self.row_start:self.row_end
-                ] - 
-                _images[
-                    1+self.discard_runs_upto::2,
+                    self.discard_runs_upto:,
                     self.col_start:self.col_end,
                     self.row_start:self.row_end
                 ],
@@ -497,18 +491,12 @@ class ProbeV3(ProbeV2):
                 )
             )
             raw_img = np.mean(
-                _images[0+self.discard_runs_upto::2] - 
-                _images[1+self.discard_runs_upto::2],
+                _images[self.discard_runs_upto:],
                 axis=0
             )
             processed_img = np.mean(
                 _images[
-                    0+self.discard_runs_upto::2,
-                    self.col_start:self.col_end,
-                    self.row_start:self.row_end
-                ] - 
-                _images[
-                    1+self.discard_runs_upto::2,
+                    self.discard_runs_upto:,
                     self.col_start:self.col_end,
                     self.row_start:self.row_end
                 ],
@@ -721,18 +709,12 @@ class ProbeV3(ProbeV2):
             )
             _images = yag_on_images - yag_off_images
             raw_img = np.mean(
-                _images[0+self.discard_runs_upto::2] - 
-                _images[1+self.discard_runs_upto::2],
+                _images[self.discard_runs_upto:],
                 axis=0
             )
             processed_img = np.mean(
                 _images[
-                    0+self.discard_runs_upto::2,
-                    self.col_start:self.col_end,
-                    self.row_start:self.row_end
-                ] - 
-                _images[
-                    1+self.discard_runs_upto::2,
+                    self.discard_runs_upto:,
                     self.col_start:self.col_end,
                     self.row_start:self.row_end
                 ],
@@ -765,18 +747,12 @@ class ProbeV3(ProbeV2):
             )
             _images = yag_on_images - yag_off_images
             raw_img = np.mean(
-                _images[0+self.discard_runs_upto::2] - 
-                _images[1+self.discard_runs_upto::2],
+                _images[self.discard_runs_upto:],
                 axis=0
             )
             processed_img = np.mean(
                 _images[
-                    0+self.discard_runs_upto::2,
-                    self.col_start:self.col_end,
-                    self.row_start:self.row_end
-                ] - 
-                _images[
-                    1+self.discard_runs_upto::2,
+                    self.discard_runs_upto:,
                     self.col_start:self.col_end,
                     self.row_start:self.row_end
                 ],
@@ -984,18 +960,12 @@ class ProbeV3(ProbeV2):
             )
             _images = yag_on_images - yag_off_images
             raw_img = np.mean(
-                _images[0+self.discard_runs_upto::2] - 
-                _images[1+self.discard_runs_upto::2],
+                _images[self.discard_runs_upto:],
                 axis=0
             )
             processed_img = np.mean(
                 _images[
-                    0+self.discard_runs_upto::2,
-                    self.col_start:self.col_end,
-                    self.row_start:self.row_end
-                ] - 
-                _images[
-                    1+self.discard_runs_upto::2,
+                    self.discard_runs_upto:,
                     self.col_start:self.col_end,
                     self.row_start:self.row_end
                 ],
@@ -1029,18 +999,12 @@ class ProbeV3(ProbeV2):
             )
             _images = yag_on_images - yag_off_images
             raw_img = np.mean(
-                _images[0+self.discard_runs_upto::2] - 
-                _images[1+self.discard_runs_upto::2],
+                _images[self.discard_runs_upto:],
                 axis=0
             )
             processed_img = np.mean(
                 _images[
-                    0+self.discard_runs_upto::2,
-                    self.col_start:self.col_end,
-                    self.row_start:self.row_end
-                ] - 
-                _images[
-                    1+self.discard_runs_upto::2,
+                    self.discard_runs_upto:,
                     self.col_start:self.col_end,
                     self.row_start:self.row_end
                 ],
