@@ -388,18 +388,20 @@ def read_ad9959_frequencies_from_zip(
     archive: ZipFile,
     close: bool = True
 ) -> Dict[str, Any]:
-    frequencies = {}
+    state = {}
     for filename in archive.namelist():
-        if filename[-16:] == "AD9959Config.txt":
+        if filename[-13:] == "evalboard.txt":
             with archive.open(filename) as f:
-                line = f.readline()
-                _frequencies: Dict[str, List[float, float]] = json.loads(line)
-            for key, value in _frequencies.items():
-                frequencies[f"ad9959_channel_{key}_freq"] = value[0]
-                frequencies[f"ad9959_channel_{key}_amp"] = value[1]
+                line: Dict[str, Any] = json.loads(f.readline())
+                board: int = line["board"]
+                _frequencies: List[float] = line["frequencies"]
+                _amplitudes: List[float] = line["amplitudes"]
+                for i in range(4):
+                    state[f"DDS_{board}_channel_{i}_frequency"] = _frequencies[i]
+                    state[f"DDS_{board}_channel_{i}_amplitude"] = _amplitudes[i]
     if close:
         archive.close()
-    return frequencies
+    return state
 
 
 def read_all_parameter_data_from_zip(

@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, List
 from scipy.optimize import curve_fit
 import numpy as np
 
@@ -581,18 +581,17 @@ def fit_trap_frequency_oscillation(
 def gaussian_without_offset_2D(
     xy: Tuple[np.ndarray, np.ndarray],
     amplitude: float,
-    centre: Tuple[float, float],
-    sigma: Tuple[float, float],
-    theta: float
+    xcentre: float,
+    ycentre: float,
+    xsigma: float,
+    ysigma: float,
+    theta: float,
 ) -> np.ndarray:
     x, y = xy
-    first = (np.cos(theta)**2)/(2*sigma[0]**2) + \
-        (np.sin(theta)**2)/(2*sigma[1]**2)*(x-centre[0])**2
-    second = -2*(np.sin(2*theta))/(4*sigma[0]**2) + \
-        (np.sin(2*theta))/(4*sigma[1]**2)*(x-centre[0])*(y-centre[1])
-    third = (np.sin(theta)**2)/(2*sigma[0]**2) + \
-        (np.cos(theta)**2)/(2*sigma[1]**2)*(y-centre[1])**2
-    total = amplitude*np.exp(-first+second+third)
+    first = (np.cos(theta)**2/(2*xsigma**2) + np.sin(theta)**2/(2*ysigma**2))*(x-xcentre)**2
+    second = (-np.sin(2*theta)/(2*xsigma**2) + np.sin(2*theta)/(2*ysigma**2))*(x-xcentre)*(y-ycentre)
+    third = (np.sin(theta)**2/(2*xsigma**2) + np.cos(theta)**2/(2*ysigma**2))*(y-ycentre)**2
+    total = amplitude*np.exp(-(first+second+third))
     return total.ravel()
 
 
@@ -601,37 +600,39 @@ def fit_gaussian_without_offset_2D(
     y: np.ndarray,
     data: np.ndarray,
 ) -> GaussianFitWithoutOffset2D:
-    amplitude_trial = 0
-    centre_trial = []
-    sigma_trial = []
-    theta_trial = 0
-    for i, axis in zip(range(2), [x, y]):
-        _sum = np.sum(data, axis=i)
-        loc_trial = np.argmax(_sum)
-        a_trial = _sum[loc_trial]
-        c_trial = axis[loc_trial]
-        halfmax_y = np.max(_sum)/2.0
-        s_trial = np.abs(axis[0]-axis[1])*len(_sum[_sum > halfmax_y])/2.0
-        if amplitude_trial < a_trial:
-            amplitude_trial = a_trial
-        centre_trial.append(c_trial)
-        sigma_trial.append(s_trial)
+    amplitude_trial = np.max(data)
+    theta_trial = 0.0
+    _sum = np.sum(data, axis=0)
+    xc_trial = x[np.argmax(_sum)]
+    halfmax_y = np.max(_sum)/2.0
+    xs_trial = np.abs(x[0]-x[1])*len(_sum[_sum > halfmax_y])/2.0
+    
+    _sum = np.sum(data, axis=1)
+    yc_trial = y[np.argmax(_sum)]
+    halfmax_y = np.max(_sum)/2.0
+    ys_trial = np.abs(y[0]-y[1])*len(_sum[_sum > halfmax_y])/2.0
+    
     mx, my = np.meshgrid(x, y)
     p0 = [
-        amplitude_trial, tuple(centre_trial),
-        tuple(sigma_trial), theta_trial
+        amplitude_trial, xc_trial, yc_trial,
+        xs_trial, ys_trial, theta_trial
     ]
-    popt, _ = curve_fit(gaussian_without_offset_2D, (mx, my), data, p0=p0)
-    func_str = "\n y = a*exp(-((x-xc)**2/(2*xs**2)+(y-yc)**2/(2*ys**2)))"
+    popt, _ = curve_fit(gaussian_without_offset_2D, (mx, my), data.ravel(), p0=p0)
+    data_fit = gaussian_without_offset_2D((mx, my), *popt).reshape(len(x), len(y))
+    func_str = "\n y = a*exp(-((x-xc)**2/(2*xs**2)+(y-yc)**2/(2*ys**2)))+o"
     args_str = f"\n a: {popt[0]:e}\n (xc, yc): {popt[1]:e}" + \
-        f"\n (xs, ys): {popt[2]:e}\n"
+        f"\n (xs, ys): {popt[2]:e}\n o: {popt[3]:e}"
     fit = GaussianFitWithoutOffset2D(
         func_str=func_str,
         args_str=args_str,
         amplitude=popt[0],
-        centre=popt[1],
-        width=popt[2],
+        xcentre=popt[1],
+        ycentre=popt[2],
+        xwidth=popt[3],
+        ywidth=popt[4],
+        theta=popt[5],
         data=data,
+        data_fit=data_fit,
         x=x,
         y=y
     )
@@ -639,22 +640,20 @@ def fit_gaussian_without_offset_2D(
 
 
 def gaussian_with_offset_2D(
-    x: np.ndarray,
-    y: np.ndarray,
+    xy: Tuple[np.ndarray, np.ndarray],
     amplitude: float,
-    centre: Tuple[float, float],
-    sigma: Tuple[float, float],
-    offset: float,
-    theta: float
-) -> None:
-    x, y = np.meshgrid(x, y)
-    first = (np.cos(theta)**2)/(2*sigma[0]**2) + \
-        (np.sin(theta)**2)/(2*sigma[1]**2)*(x-centre[0])**2
-    second = -2*(np.sin(2*theta))/(4*sigma[0]**2) + \
-        (np.sin(2*theta))/(4*sigma[1]**2)*(x-centre[0])*(y-centre[1])
-    third = (np.sin(theta)**2)/(2*sigma[0]**2) + \
-        (np.cos(theta)**2)/(2*sigma[1]**2)*(y-centre[1])**2
-    total = offset+amplitude*np.exp(-first+second+third)
+    xcentre: float,
+    ycentre: float,
+    xsigma: float,
+    ysigma: float,
+    theta: float,
+    offset: float
+) -> np.ndarray:
+    x, y = xy
+    first = (np.cos(theta)**2/(2*xsigma**2) + np.sin(theta)**2/(2*ysigma**2))*(x-xcentre)**2
+    second = (-np.sin(2*theta)/(2*xsigma**2) + np.sin(2*theta)/(2*ysigma**2))*(x-xcentre)*(y-ycentre)
+    third = (np.sin(theta)**2/(2*xsigma**2) + np.cos(theta)**2/(2*ysigma**2))*(y-ycentre)**2
+    total = amplitude*np.exp(-(first+second+third))+offset
     return total.ravel()
 
 
@@ -663,28 +662,26 @@ def fit_gaussian_with_offset_2D(
     y: np.ndarray,
     data: np.ndarray,
 ) -> GaussianFitWithOffset2D:
-    amplitude_trial = 0
-    centre_trial = []
-    sigma_trial = []
-    theta_trial = 0
     offset_trial = np.min(data)
-    for i, axis in zip(range(2), [x, y]):
-        _sum = np.sum(data, axis=i)
-        loc_trial = np.argmax(_sum)
-        a_trial = _sum[loc_trial]
-        c_trial = axis[loc_trial]
-        halfmax_y = np.max(_sum)/2.0
-        s_trial = np.abs(axis[0]-axis[1])*len(_sum[_sum > halfmax_y])/2.0
-        if amplitude_trial < a_trial:
-            amplitude_trial = a_trial
-        centre_trial.append(c_trial)
-        sigma_trial.append(s_trial)
+    amplitude_trial = np.max(data)
+    theta_trial = 0.0
+    _sum = np.sum(data, axis=0)
+    xc_trial = x[np.argmax(_sum)]
+    halfmax_y = np.max(_sum)/2.0
+    xs_trial = np.abs(x[0]-x[1])*len(_sum[_sum > halfmax_y])/2.0
+    
+    _sum = np.sum(data, axis=1)
+    yc_trial = y[np.argmax(_sum)]
+    halfmax_y = np.max(_sum)/2.0
+    ys_trial = np.abs(y[0]-y[1])*len(_sum[_sum > halfmax_y])/2.0
+    
     mx, my = np.meshgrid(x, y)
     p0 = [
-        amplitude_trial, tuple(centre_trial),
-        tuple(sigma_trial), offset_trial, theta_trial
+        amplitude_trial, xc_trial, yc_trial,
+        xs_trial, ys_trial, theta_trial, offset_trial
     ]
-    popt, _ = curve_fit(gaussian_with_offset_2D, (mx, my), data, p0=p0)
+    popt, _ = curve_fit(gaussian_with_offset_2D, (mx, my), data.ravel(), p0=p0)
+    data_fit = gaussian_with_offset_2D((mx, my), *popt).reshape(len(x), len(y))
     func_str = "\n y = a*exp(-((x-xc)**2/(2*xs**2)+(y-yc)**2/(2*ys**2)))+o"
     args_str = f"\n a: {popt[0]:e}\n (xc, yc): {popt[1]:e}" + \
         f"\n (xs, ys): {popt[2]:e}\n o: {popt[3]:e}"
@@ -692,10 +689,14 @@ def fit_gaussian_with_offset_2D(
         func_str=func_str,
         args_str=args_str,
         amplitude=popt[0],
-        centre=popt[1],
-        width=popt[2],
-        offset=popt[3],
+        xcentre=popt[1],
+        ycentre=popt[2],
+        xwidth=popt[3],
+        ywidth=popt[4],
+        theta=popt[5],
+        offset=popt[6],
         data=data,
+        data_fit=data_fit,
         x=x,
         y=y
     )

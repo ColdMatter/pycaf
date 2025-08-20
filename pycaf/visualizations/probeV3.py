@@ -16,6 +16,7 @@ from ..analysis import (
     read_images_from_zip,
     read_all_parameter_data_from_zip,
     calculate_cloud_size_from_image_1d_gaussian,
+    calculate_cloud_size_from_image_2d_gaussian,
     fit_linear,
     fit_quadratic_without_slope,
     fit_exponential_without_offset,
@@ -165,6 +166,9 @@ class ProbeV3(ProbeV2):
         discard_runs_upto: int = 0,
         is_bg_included: bool = False,
         first_file_normalization: bool = False,
+        fit_2d: bool = False,
+        bg_file_start: int = None,
+        bg_file_stop: int = None,
         threshold=3.5,
         bootstrap=True,
         n_bootstrap=1000
@@ -182,6 +186,9 @@ class ProbeV3(ProbeV2):
         self.threshold = threshold
         self.bootstrap = bootstrap
         self.n_bootstrap = n_bootstrap
+        self.bg_file_start = bg_file_start
+        self.bg_file_stop = bg_file_stop
+        self.fit_2d = fit_2d
         if first_file_normalization:
             if len(parameters) == 1:
                 if is_bg_included:
@@ -195,10 +202,13 @@ class ProbeV3(ProbeV2):
                     self._extract_data_without_bg_included_2d_normalized()
         else:
             if len(parameters) == 1:
-                if is_bg_included:
-                    self._extract_data_with_bg_included_1d()
+                if bg_file_start and bg_file_stop:
+                    self._extract_data_with_bg_file_1d()
                 else:
-                    self._extract_data_without_bg_included_1d()
+                    if is_bg_included:
+                        self._extract_data_with_bg_included_1d()
+                    else:
+                        self._extract_data_without_bg_included_1d()
             elif len(parameters) == 2:
                 if is_bg_included:
                     self._extract_data_with_bg_included_2d()
@@ -206,6 +216,121 @@ class ProbeV3(ProbeV2):
                     self._extract_data_without_bg_included_2d()
         return self
     
+    def _extract_data_with_bg_file_1d(self) -> Self:
+        rel_numbers, v_widths, h_widths = [], [], []
+        v_centres, h_centres, parameters = [], [], []
+        raw_images, processed_images = [], []
+        bg_images = []
+        for bg_fileno in range(self.bg_file_start, self.bg_file_stop+1, 1):
+            yag_off_images = read_images_from_zip(
+                get_zip_archive(
+                    self.rootpath, self.year, self.month,
+                    self.day, bg_fileno, self.prefix
+                )
+            )
+            bg_images.append(yag_off_images)
+        n_iter = len(bg_images)
+        for k, fileno in enumerate(range(self.file_start, self.file_stop+1, 1)):
+            yag_on_images = read_images_from_zip(
+                get_zip_archive(
+                    self.rootpath, self.year, self.month,
+                    self.day, fileno, self.prefix
+                )
+            )
+            _images = yag_on_images - bg_images[k%n_iter]
+            _params = read_all_parameter_data_from_zip(
+                get_zip_archive(
+                    self.rootpath, self.year, self.month,
+                    self.day, fileno, self.prefix
+                )
+            )
+            raw_img = np.mean(
+                _images[self.discard_runs_upto:],
+                axis=0
+            )
+            processed_img = np.mean(
+                _images[
+                    self.discard_runs_upto:,
+                    self.col_start:self.col_end,
+                    self.row_start:self.row_end
+                ],
+                axis=0
+            )
+            
+            _param = _params[self.parameters[0]]
+            exposure_time = _params[self.exposure_time_param]*1e-5
+            number_multiplier = self.photon/(
+                exposure_time*self.gamma*self.collection_solid_angle
+            )
+            n = number_multiplier*np.nansum(processed_img)
+            if not self.only_number:
+                if self.fit_2d:
+                    fit = calculate_cloud_size_from_image_2d_gaussian(
+                        processed_img,
+                        pixel_size=self.pixel_size,
+                        bin_size=self.binning,
+                        magnification=self.magnification
+                    )
+                    if fit is not None:
+                        xs = np.sqrt(fit.xwidth**2*np.cos(fit.theta)**2+fit.ywidth**2*np.sin(fit.theta)**2)
+                        ys = np.sqrt(fit.xwidth**2*np.sin(fit.theta)**2+fit.ywidth**2*np.cos(fit.theta)**2)
+                        rel_numbers.append(n)
+                        parameters.append(_param)
+                        raw_images.append(raw_img)
+                        processed_images.append(processed_img)
+                        self.v_fits.append(fit)
+                        self.h_fits.append(fit)
+                        v_widths.append(xs)
+                        v_centres.append(fit.xcentre)
+                        h_widths.append(ys)
+                        h_centres.append(fit.ycentre)
+                    else:
+                        print(f"cloud fitting error in fileno: {fileno}")
+                else:
+                    v_fit, h_fit = calculate_cloud_size_from_image_1d_gaussian(
+                        processed_img,
+                        pixel_size=self.pixel_size,
+                        bin_size=self.binning,
+                        magnification=self.magnification
+                    )
+                    if (v_fit is not None) and (h_fit is not None):
+                        rel_numbers.append(n)
+                        parameters.append(_param)
+                        raw_images.append(raw_img)
+                        processed_images.append(processed_img)
+                        self.v_fits.append(v_fit)
+                        self.h_fits.append(h_fit)
+                        v_widths.append(v_fit.width)
+                        v_centres.append(v_fit.centre)
+                        h_widths.append(h_fit.width)
+                        h_centres.append(h_fit.centre)
+                    else:
+                        print(f"cloud fitting error in fileno: {fileno}")
+            else:
+                rel_numbers.append(n)
+                parameters.append(_param)
+                raw_images.append(raw_img)
+                processed_images.append(processed_img)
+                self.v_fits.append(None)
+                self.h_fits.append(None)
+                v_widths.append(0.0)
+                v_centres.append(0.0)
+                h_widths.append(0.0)
+                h_centres.append(0.0)
+        self.unique_params1, self.number_mean, self.number_err, \
+        self.v_widths_mean, self.v_widths_err, \
+        self.h_widths_mean, self.h_widths_err, \
+        self.v_centres_mean, self.v_centres_err, \
+        self.h_centres_mean, self.h_centres_err = \
+            groupby_data_1d(
+                parameters, rel_numbers, v_widths,
+                h_widths, v_centres, h_centres
+            )
+        self.raw_images = np.array(raw_images)
+        self.processed_images = np.array(processed_images)
+        return self
+
+
     def _extract_data_with_bg_included_1d(self) -> Self:
         rel_numbers, v_widths, h_widths = [], [], []
         v_centres, h_centres, parameters = [], [], []
@@ -250,23 +375,48 @@ class ProbeV3(ProbeV2):
             n = number_multiplier*np.nansum(processed_img)
 
             if not self.only_number:
-                v_fit, h_fit = calculate_cloud_size_from_image_1d_gaussian(
-                    processed_img,
-                    pixel_size=self.pixel_size,
-                    bin_size=self.binning,
-                    magnification=self.magnification
-                )
-                if (v_fit is not None) and (h_fit is not None) and (n >= 0):
-                    rel_numbers.append(n)
-                    parameters.append(_param)
-                    raw_images.append(raw_img)
-                    processed_images.append(processed_img)
-                    self.v_fits.append(v_fit)
-                    self.h_fits.append(h_fit)
-                    v_widths.append(v_fit.width)
-                    v_centres.append(v_fit.centre)
-                    h_widths.append(h_fit.width)
-                    h_centres.append(h_fit.centre)
+                if self.fit_2d:
+                    fit = calculate_cloud_size_from_image_2d_gaussian(
+                        processed_img,
+                        pixel_size=self.pixel_size,
+                        bin_size=self.binning,
+                        magnification=self.magnification
+                    )
+                    if fit is not None:
+                        xs = np.sqrt(fit.xwidth**2*np.cos(fit.theta)**2+fit.ywidth**2*np.sin(fit.theta)**2)
+                        ys = np.sqrt(fit.xwidth**2*np.sin(fit.theta)**2+fit.ywidth**2*np.cos(fit.theta)**2)
+                        rel_numbers.append(n)
+                        parameters.append(_param)
+                        raw_images.append(raw_img)
+                        processed_images.append(processed_img)
+                        self.v_fits.append(fit)
+                        self.h_fits.append(fit)
+                        v_widths.append(xs)
+                        v_centres.append(fit.xcentre)
+                        h_widths.append(ys)
+                        h_centres.append(fit.ycentre)
+                    else:
+                        print(f"cloud fitting error in fileno: {fileno}")
+                else:
+                    v_fit, h_fit = calculate_cloud_size_from_image_1d_gaussian(
+                        processed_img,
+                        pixel_size=self.pixel_size,
+                        bin_size=self.binning,
+                        magnification=self.magnification
+                    )
+                    if (v_fit is not None) and (h_fit is not None):
+                        rel_numbers.append(n)
+                        parameters.append(_param)
+                        raw_images.append(raw_img)
+                        processed_images.append(processed_img)
+                        self.v_fits.append(v_fit)
+                        self.h_fits.append(h_fit)
+                        v_widths.append(v_fit.width)
+                        v_centres.append(v_fit.centre)
+                        h_widths.append(h_fit.width)
+                        h_centres.append(h_fit.centre)
+                    else:
+                        print(f"cloud fitting error in fileno: {fileno}")
             else:
                 rel_numbers.append(n)
                 parameters.append(_param)
@@ -290,7 +440,117 @@ class ProbeV3(ProbeV2):
         self.raw_images = np.array(raw_images)
         self.processed_images = np.array(processed_images)
         return self
+    
+    def _extract_data_with_bg_included_1d_2d_fit(self) -> Self:
+        rel_numbers, v_widths, h_widths = [], [], []
+        v_centres, h_centres, parameters = [], [], []
+        raw_images, processed_images = [], []
+        for fileno in range(self.file_start, self.file_stop+1):
+            _images = read_images_from_zip(
+                get_zip_archive(
+                    self.rootpath, self.year, self.month,
+                    self.day, fileno, self.prefix
+                )
+            )
+            _params = read_all_parameter_data_from_zip(
+                get_zip_archive(
+                    self.rootpath, self.year, self.month,
+                    self.day, fileno, self.prefix
+                )
+            )
+            raw_img = np.mean(
+                _images[0+self.discard_runs_upto::2] - 
+                _images[1+self.discard_runs_upto::2],
+                axis=0
+            )
+            processed_img = np.mean(
+                _images[
+                    0+self.discard_runs_upto::2,
+                    self.col_start:self.col_end,
+                    self.row_start:self.row_end
+                ] - 
+                _images[
+                    1+self.discard_runs_upto::2,
+                    self.col_start:self.col_end,
+                    self.row_start:self.row_end
+                ],
+                axis=0
+            )
+            
+            _param = _params[self.parameters[0]]
+            exposure_time = _params[self.exposure_time_param]*1e-5
+            number_multiplier = self.photon/(
+                exposure_time*self.gamma*self.collection_solid_angle
+            )
+            n = number_multiplier*np.nansum(processed_img)
 
+            if not self.only_number:
+                if self.fit_2d:
+                    fit = calculate_cloud_size_from_image_2d_gaussian(
+                        processed_img,
+                        pixel_size=self.pixel_size,
+                        bin_size=self.binning,
+                        magnification=self.magnification
+                    )
+                    if fit is not None:
+                        xs = np.sqrt(fit.xwidth**2*np.cos(fit.theta)**2+fit.ywidth**2*np.sin(fit.theta)**2)
+                        ys = np.sqrt(fit.xwidth**2*np.sin(fit.theta)**2+fit.ywidth**2*np.cos(fit.theta)**2)
+                        rel_numbers.append(n)
+                        parameters.append(_param)
+                        raw_images.append(raw_img)
+                        processed_images.append(processed_img)
+                        self.v_fits.append(fit)
+                        self.h_fits.append(fit)
+                        v_widths.append(xs)
+                        v_centres.append(fit.xcentre)
+                        h_widths.append(ys)
+                        h_centres.append(fit.ycentre)
+                    else:
+                        print(f"cloud fitting error in fileno: {fileno}")
+                else:
+                    v_fit, h_fit = calculate_cloud_size_from_image_1d_gaussian(
+                        processed_img,
+                        pixel_size=self.pixel_size,
+                        bin_size=self.binning,
+                        magnification=self.magnification
+                    )
+                    if (v_fit is not None) and (h_fit is not None):
+                        rel_numbers.append(n)
+                        parameters.append(_param)
+                        raw_images.append(raw_img)
+                        processed_images.append(processed_img)
+                        self.v_fits.append(v_fit)
+                        self.h_fits.append(h_fit)
+                        v_widths.append(v_fit.width)
+                        v_centres.append(v_fit.centre)
+                        h_widths.append(h_fit.width)
+                        h_centres.append(h_fit.centre)
+                    else:
+                        print(f"cloud fitting error in fileno: {fileno}")
+            else:
+                rel_numbers.append(n)
+                parameters.append(_param)
+                raw_images.append(raw_img)
+                processed_images.append(processed_img)
+                self.v_fits.append(None)
+                self.h_fits.append(None)
+                v_widths.append(0.0)
+                v_centres.append(0.0)
+                h_widths.append(0.0)
+                h_centres.append(0.0)
+        self.unique_params1, self.number_mean, self.number_err, \
+        self.v_widths_mean, self.v_widths_err, \
+        self.h_widths_mean, self.h_widths_err, \
+        self.v_centres_mean, self.v_centres_err, \
+        self.h_centres_mean, self.h_centres_err = \
+            groupby_data_1d(
+                parameters, rel_numbers, v_widths,
+                h_widths, v_centres, h_centres
+            )
+        self.raw_images = np.array(raw_images)
+        self.processed_images = np.array(processed_images)
+        return self
+    
     def _extract_data_without_bg_included_1d(self) -> Self:
         rel_numbers, v_widths, h_widths = [], [], []
         v_centres, h_centres, parameters = [], [], []
@@ -335,23 +595,48 @@ class ProbeV3(ProbeV2):
             )
             n = number_multiplier*np.nansum(processed_img)
             if not self.only_number:
-                v_fit, h_fit = calculate_cloud_size_from_image_1d_gaussian(
-                    processed_img,
-                    pixel_size=self.pixel_size,
-                    bin_size=self.binning,
-                    magnification=self.magnification
-                )
-                if (v_fit is not None) and (h_fit is not None) and (n >= 0):
-                    rel_numbers.append(n)
-                    parameters.append(_param)
-                    raw_images.append(raw_img)
-                    processed_images.append(processed_img)
-                    self.v_fits.append(v_fit)
-                    self.h_fits.append(h_fit)
-                    v_widths.append(v_fit.width)
-                    v_centres.append(v_fit.centre)
-                    h_widths.append(h_fit.width)
-                    h_centres.append(h_fit.centre)
+                if self.fit_2d:
+                    fit = calculate_cloud_size_from_image_2d_gaussian(
+                        processed_img,
+                        pixel_size=self.pixel_size,
+                        bin_size=self.binning,
+                        magnification=self.magnification
+                    )
+                    if fit is not None:
+                        xs = np.sqrt(fit.xwidth**2*np.cos(fit.theta)**2+fit.ywidth**2*np.sin(fit.theta)**2)
+                        ys = np.sqrt(fit.xwidth**2*np.sin(fit.theta)**2+fit.ywidth**2*np.cos(fit.theta)**2)
+                        rel_numbers.append(n)
+                        parameters.append(_param)
+                        raw_images.append(raw_img)
+                        processed_images.append(processed_img)
+                        self.v_fits.append(fit)
+                        self.h_fits.append(fit)
+                        v_widths.append(xs)
+                        v_centres.append(fit.xcentre)
+                        h_widths.append(ys)
+                        h_centres.append(fit.ycentre)
+                    else:
+                        print(f"cloud fitting error in fileno: {fileno}")
+                else:
+                    v_fit, h_fit = calculate_cloud_size_from_image_1d_gaussian(
+                        processed_img,
+                        pixel_size=self.pixel_size,
+                        bin_size=self.binning,
+                        magnification=self.magnification
+                    )
+                    if (v_fit is not None) and (h_fit is not None):
+                        rel_numbers.append(n)
+                        parameters.append(_param)
+                        raw_images.append(raw_img)
+                        processed_images.append(processed_img)
+                        self.v_fits.append(v_fit)
+                        self.h_fits.append(h_fit)
+                        v_widths.append(v_fit.width)
+                        v_centres.append(v_fit.centre)
+                        h_widths.append(h_fit.width)
+                        h_centres.append(h_fit.centre)
+                    else:
+                        print(f"cloud fitting error in fileno: {fileno}")
             else:
                 rel_numbers.append(n)
                 parameters.append(_param)
@@ -427,7 +712,7 @@ class ProbeV3(ProbeV2):
                     bin_size=self.binning,
                     magnification=self.magnification
                 )
-                if (v_fit is not None) and (h_fit is not None) and (n >= 0):
+                if (v_fit is not None) and (h_fit is not None):
                     v_widths.append(v_fit.width)
                     v_centres.append(v_fit.centre)
                     h_widths.append(h_fit.width)
@@ -517,7 +802,7 @@ class ProbeV3(ProbeV2):
                     bin_size=self.binning,
                     magnification=self.magnification
                 )
-                if (v_fit is not None) and (h_fit is not None) and (n >= 0):
+                if (v_fit is not None) and (h_fit is not None):
                     v_widths.append(v_fit.width)
                     v_centres.append(v_fit.centre)
                     h_widths.append(h_fit.width)
@@ -644,7 +929,7 @@ class ProbeV3(ProbeV2):
                     bin_size=self.binning,
                     magnification=self.magnification
                 )
-                if (v_fit is not None) and (h_fit is not None) and (n >= 0):
+                if (v_fit is not None) and (h_fit is not None):
                     rel_numbers.append(n)
                     parameters.append(_param)
                     raw_images.append(raw_img)
@@ -769,7 +1054,7 @@ class ProbeV3(ProbeV2):
                     bin_size=self.binning,
                     magnification=self.magnification
                 )
-                if (v_fit is not None) and (h_fit is not None) and (n >= 0):
+                if (v_fit is not None) and (h_fit is not None):
                     rel_numbers.append(n)
                     parameters.append(_param)
                     raw_images.append(raw_img)
@@ -815,7 +1100,6 @@ class ProbeV3(ProbeV2):
                     self.day, fileno, self.prefix
                 )
             )
-            _param = _params[self.parameters[0]]
             exposure_time = _params[self.exposure_time_param]*1e-5
             number_multiplier = self.photon/(
                 exposure_time*self.gamma*self.collection_solid_angle
@@ -893,7 +1177,7 @@ class ProbeV3(ProbeV2):
                     bin_size=self.binning,
                     magnification=self.magnification
                 )
-                if (v_fit is not None) and (h_fit is not None) and (n >= 0):
+                if (v_fit is not None) and (h_fit is not None):
                     v_widths.append(v_fit.width)
                     v_centres.append(v_fit.centre)
                     h_widths.append(h_fit.width)
@@ -999,12 +1283,18 @@ class ProbeV3(ProbeV2):
             )
             _images = yag_on_images - yag_off_images
             raw_img = np.mean(
-                _images[self.discard_runs_upto:],
+                _images[0+self.discard_runs_upto::2] - 
+                _images[1+self.discard_runs_upto::2],
                 axis=0
             )
             processed_img = np.mean(
                 _images[
-                    self.discard_runs_upto:,
+                    0+self.discard_runs_upto::2,
+                    self.col_start:self.col_end,
+                    self.row_start:self.row_end
+                ] - 
+                _images[
+                    1+self.discard_runs_upto::2,
                     self.col_start:self.col_end,
                     self.row_start:self.row_end
                 ],
@@ -1021,7 +1311,7 @@ class ProbeV3(ProbeV2):
                     bin_size=self.binning,
                     magnification=self.magnification
                 )
-                if (v_fit is not None) and (h_fit is not None) and (n >= 0):
+                if (v_fit is not None) and (h_fit is not None):
                     v_widths.append(v_fit.width)
                     v_centres.append(v_fit.centre)
                     h_widths.append(h_fit.width)
@@ -1279,16 +1569,25 @@ class ProbeV3(ProbeV2):
                 break
         return self
     
-    def display_temperature(self) -> Self:
+    def display_temperature(
+        self,
+        use_error_weightage: bool = True
+    ) -> Self:
+        if not use_error_weightage:
+            h_widths_err = np.zeros_like(self.h_widths_err)
+            v_widths_err = np.zeros_like(self.v_widths_err)
+        else:
+            h_widths_err = self.h_widths_err
+            v_widths_err = self.v_widths_err
         self.horizontal_temperature = fit_linear(
             (self.unique_params1*1e-5)**2,
             self.h_widths_mean**2,
-            self.h_widths_err**2
+            2*self.h_widths_mean*h_widths_err
         )
         self.vertical_temperature = fit_linear(
             (self.unique_params1*1e-5)**2,
             self.v_widths_mean**2,
-            self.v_widths_err**2
+            2*self.v_widths_mean*v_widths_err
         )
         _h_temp = self.horizontal_temperature.slope*(self.mass*cn.u)/cn.k
         _v_temp = self.vertical_temperature.slope*(self.mass*cn.u)/cn.k
@@ -1296,6 +1595,10 @@ class ProbeV3(ProbeV2):
             self.horizontal_temperature.slope_err*(self.mass*cn.u)/cn.k
         _v_temp_err = \
             self.vertical_temperature.slope_err*(self.mass*cn.u)/cn.k
+        self.horizontal_temperature_value = _h_temp
+        self.horizontal_temperature_error = _h_temp_err
+        self.vertical_temperature_value = _v_temp
+        self.vertical_temperature_error = _v_temp_err
         fig, ax = plt.subplots(1, 2, figsize=self.figsize)
         fig.subplots_adjust(wspace=0.02)
         _h_e = 2*self.h_widths_err*self.h_widths_mean
@@ -1336,6 +1639,18 @@ class ProbeV3(ProbeV2):
         ax[1].set_ylabel("Sq. horizontal width [mm$^2$]")
         return self
     
+    def display_contour_images(
+        self,
+        *args,
+        **kwargs
+    ) -> Self:
+        for fit in self.v_fits:
+            fig, ax = plt.subplots(1, 1, figsize=(4, 4))
+            ax.imshow(fit.data)
+            ax.contour(fit.data_fit, 8, colors='w')
+            ax.grid(False)
+        return self
+
     def display_images(
         self,
         *args,
@@ -1458,6 +1773,20 @@ class ProbeV3(ProbeV2):
         value: Union[int, float]
     ) -> Self:
         self.unique_params1 -= value
+        return self
+    
+    def set_yscale(
+        self,
+        value: Union[int, float]
+    ) -> Self:
+        self.yscale *= value
+        return self
+
+    def set_yoffset(
+        self,
+        value: Union[int, float]
+    ) -> Self:
+        self.yoffset -= value
         return self
 
     def set_xcalibration(

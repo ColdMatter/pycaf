@@ -1,4 +1,4 @@
-from typing import Union, Tuple
+from typing import Union, List
 from pydantic import BaseModel
 import numpy as np
 
@@ -26,10 +26,11 @@ class Fit(BaseModel):
 
 
 class Fit2D(BaseModel):
-    func: str
-    x: np.ndarray = np.array([])
-    y: np.ndarray = np.array([])
+    func_str: str
+    x: np.ndarray = np.array([[]])
+    y: np.ndarray = np.array([[]])
     data: np.ndarray = np.array([[]])
+    data_fit: np.ndarray = np.array([])
 
     class Config:
         arbitrary_types_allowed = True
@@ -96,11 +97,17 @@ class ExponentialFitWithOffset2(ExponentialFitWithoutOffset2):
 
 class GaussianFitWithoutOffset2D(Fit2D):
     amplitude: float
-    centre: Tuple[float, float]
-    width: Tuple[float, float]
+    xcentre: float
+    ycentre: float
+    xwidth: float
+    ywidth: float
+    theta: float
     amplitude_err: float = None
-    centre_err: Tuple[float, float] = None
-    width_err: Tuple[float, float] = None
+    xcentre_err: float = None
+    ycentre_err: float = None
+    xwidth_err: float = None
+    ywidth_err: float = None
+    theta_err: float = None
 
 
 class GaussianFitWithOffset2D(GaussianFitWithoutOffset2D):
