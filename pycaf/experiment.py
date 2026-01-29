@@ -154,14 +154,19 @@ class Experiment():
         script: str,
         parameter: str,
         values: List[Union[int, float]],
+        iterations: int = 20,
+        save: bool = True,
         callback: Callable = None
     ) -> List[Any]:
         _dictionary = Dictionary[String, Object]()
         path = str(self.root.joinpath(f"{script}.cs"))
         results = []
         try:
+            self.motmaster.SetRunUntilStopped(False)
             self.motmaster.SetScriptPath(path)
-            for i in track(range(len(values))):
+            self.motmaster.SaveToggle(save)
+            self.motmaster.SetIterations(iterations)
+            for i in range(len(values)):
                 _dictionary[parameter] = values[i]
                 self.motmaster.Go(_dictionary)
                 time.sleep(self.interval)
@@ -176,13 +181,18 @@ class Experiment():
         self,
         script: str,
         parameters: List[str],
-        values: List[Tuple[Any]]
+        values: List[Tuple[Any]],
+        iterations: int = 20,
+        save: bool = True
     ) -> None:
         _dictionary = Dictionary[String, Object]()
         path = str(self.root.joinpath(f"{script}.cs"))
         try:
+            self.motmaster.SetRunUntilStopped(False)
             self.motmaster.SetScriptPath(path)
-            for i in track(range(len(values))):
+            self.motmaster.SaveToggle(save)
+            self.motmaster.SetIterations(iterations)
+            for i in range(len(values)):
                 for k, parameter in enumerate(parameters):
                     _dictionary[parameter] = values[i][k]
                 self.motmaster.Go(_dictionary)
