@@ -56,6 +56,7 @@ class Experiment():
                         MOTMaster.Controller,
                         path_info["remote_path"]
                     )
+                    print("Connected to MotMaster.")
                 except Exception as e:
                     print(f"Error: {e} encountered")
             elif key == "cafbec_hardware_controller":
