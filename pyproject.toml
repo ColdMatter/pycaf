@@ -51,7 +51,7 @@ iso8601 = "=2.1.0"      # from pip section
 # --- Jupyter Stack ---
 # (Usually you only need ipykernel/widgets, the rest are pulled in automatically)
 ipykernel = "=6.28.0"
-# ipywidgets = "=8.1.5"
+ipywidgets = "=8.1.5"
 
 # --- Windows Specific ---
 # Constrained to Windows platform to prevent errors on Linux/Mac
