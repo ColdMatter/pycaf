@@ -251,7 +251,7 @@ class LiveMOT(Experiment):
 if __name__ == "__main__":
     config_path = "C:\\ControlPrograms\\pycaf\\config.json"
     interval = 0.1
-    script = "AMOTBasicLifetime"
+    script = "AMOTFourSidebands"
     timegap_in_ms = 20
     live_mot = LiveMOT(
         config_path=config_path,

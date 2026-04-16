@@ -203,6 +203,17 @@ class Experiment():
             )
         return lasers
 
+    def get_laser_frequencies_actual(
+        self
+    ) -> Dict[str, Dict[str, float]]:
+        lasers = {}
+        for laser, _ in self.config["lasers"].items():
+            channel = int(self.wavemeter_lock.getChannelNum(laser))
+            frequency = float(self.wavemeter_lock.getFrequency(channel))
+            lasers[laser] = {"frequency": frequency}
+            #print(f"{laser}: frequency = {frequency} THz")
+        return lasers
+
     def scan_motmaster_parameter(
         self,
         script: str,
@@ -464,11 +475,14 @@ class Experiment():
     def motmaster_single_run(
         self,
         script: str,
-        parameter: str = "",
-        value: Union[int, float] = None,
+        parameter: Union[str, List[str]] = "",
+        value: Union[int, float, Tuple] = None,
     ) -> None:
         _dictionary = Dictionary[String, Object]()
-        if len(parameter):
+        if isinstance(parameter, list):
+            for k, p in enumerate(parameter):
+                _dictionary[p] = value[k]
+        elif len(parameter):
             _dictionary[parameter] = value
         path = str(self.root.joinpath(f"{script}.cs"))
         try:
