@@ -1,4 +1,6 @@
-from typing import Any, Callable, Dict, List, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, List, Tuple, Union
+from contextlib import contextmanager
+import filecmp
 import pathlib
 from rich.progress import track
 import time
@@ -29,6 +31,7 @@ class Experiment():
         self.hardware_controller = None
         self.transfer_cavity_lock = None
         self.waveplate_controller = None
+        self._link_requested = False
 
     def _add_ref(
         self,
@@ -64,7 +67,9 @@ class Experiment():
                         path_info["remote_path"]
                     )
                 except Exception as e:
-                    print(f"Error: {e} encountered")
+                    raise RuntimeError(
+                        self._motmaster_load_error(path_info["exe_path"], e)
+                    ) from e
             elif key == "cafbec_hardware_controller":
                 self._add_ref(path_info["exe_path"])
                 try:
@@ -142,6 +147,33 @@ class Experiment():
                             print(f"Error: {e} encountered")
         print(self.hardware_controller)
         return None
+
+    def _motmaster_load_error(
+        self,
+        exe_path: str,
+        error: Exception
+    ) -> str:
+        # A .NET process can load only one DAQ/SharedCode assembly, and the
+        # first one added wins, so a stale copy in dll_paths breaks MOTMaster's
+        # types even though MOTMaster.exe itself is up to date.
+        motmaster_dir = pathlib.Path(exe_path).parent
+        stale = []
+        for path in self.config.get("dll_paths", {}).values():
+            own_copy = motmaster_dir / pathlib.Path(path).name
+            if own_copy.exists() and pathlib.Path(path).exists() and \
+                    not filecmp.cmp(path, own_copy, shallow=False):
+                stale.append(f"{path} differs from {own_copy}")
+        message = f"Could not load MOTMaster's types from {exe_path}: {error}"
+        if stale:
+            message += (
+                "\nThe DLLs in config['dll_paths'] are not the ones MOTMaster "
+                "was built with:\n  " + "\n  ".join(stale) +
+                "\nPoint dll_paths at the current build (e.g. "
+                "EDMSuite\\DAQ\\bin\\CaF) or rebuild the project whose copy "
+                "is stale (with that program closed: a build cannot replace "
+                "files a running program has locked)."
+            )
+        return message
 
     def disconnect(
         self
@@ -231,7 +263,7 @@ class Experiment():
                 _dictionary[parameter] = values[i]
                 if move_yag_spot:
                     self._move_picomotor_with_default_settings()
-                self.motmaster.Go(_dictionary)
+                self._go(_dictionary)
                 time.sleep(self.interval)
                 if callback is not None:
                     result = callback(values[i])
@@ -258,7 +290,7 @@ class Experiment():
                     self._move_picomotor_with_default_settings()
                 for k, parameter in enumerate(parameters):
                     _dictionary[parameter] = values[i][k]
-                self.motmaster.Go(_dictionary)
+                self._go(_dictionary)
                 time.sleep(self.interval)
                 if callback is not None:
                     result = callback(values[i])
@@ -306,7 +338,7 @@ class Experiment():
                 self.transfer_cavity_lock.SetLaserSetpoint(
                     cavity, laser, values[i]
                 )
-                self.motmaster.Go(_dictionary)
+                self._go(_dictionary)
                 time.sleep(self.interval)
                 if callback is not None:
                     result = callback(values[i])
@@ -353,7 +385,7 @@ class Experiment():
                 self.wavemeter_lock.setSlaveFrequency(
                     laser, values[i]
                 )
-                self.motmaster.Go(_dictionary)
+                self._go(_dictionary)
                 time.sleep(self.interval)
                 if callback is not None:
                     result = callback(values[i])
@@ -401,13 +433,13 @@ class Experiment():
                 if (motmaster_parameter and motmaster_values) is not None:
                     for k in range(len(motmaster_values)):
                         _dictionary[motmaster_parameter] = motmaster_values[k]
-                        self.motmaster.Go(_dictionary)
+                        self._go(_dictionary)
                         time.sleep(self.interval)
                         if callback is not None:
                             result = callback(values[i])
                             results.append(result)
                 else:
-                    self.motmaster.Go(_dictionary)
+                    self._go(_dictionary)
                     time.sleep(self.interval)
                     if callback is not None:
                         result = callback(values[i])
@@ -457,13 +489,13 @@ class Experiment():
                         motmaster_value: Tuple = motmaster_values[k]
                         for t, parameter in enumerate(motmaster_parameters):
                             _dictionary[parameter] = motmaster_value[t]
-                        self.motmaster.Go(_dictionary)
+                        self._go(_dictionary)
                         time.sleep(self.interval)
                         if callback is not None:
                             result = callback(values[i])
                             results.append(result)
                 else:
-                    self.motmaster.Go(_dictionary)
+                    self._go(_dictionary)
                     time.sleep(self.interval)
                     if callback is not None:
                         result = callback(values[i])
@@ -487,10 +519,72 @@ class Experiment():
         path = str(self.root.joinpath(f"{script}.cs"))
         try:
             self.motmaster.SetScriptPath(path)
-            self.motmaster.Go(_dictionary)
+            self._go(_dictionary)
             time.sleep(self.interval)
         except Exception as e:
             print(f"Error: {e} encountered")
+        return None
+
+    def set_linked(
+        self,
+        value: bool
+    ) -> None:
+        """Turn MOTMaster's linked mode on or off.
+
+        In linked mode one script on this MOTMaster (the primary, CaF) also
+        drives the secondary (RbTweezer), which it claims over .NET remoting
+        and fires by TTL. Every Go then drives both machines, and any failure
+        on either raises from Go rather than ending in a MessageBox. While
+        claimed, the secondary refuses its own runs, so release the link when
+        done, or use :meth:`linked`.
+
+        Turning it on when already linked keeps the existing claim. Turning it
+        off does nothing on a MOTMaster build that predates linked mode.
+        """
+        if not value and not hasattr(self.motmaster, "SetLinked"):
+            self._link_requested = False
+            return None
+        if not (value and self.motmaster.IsLinked):
+            self.motmaster.SetLinked(value)
+        self._link_requested = value
+        return None
+
+    def is_linked(
+        self
+    ) -> bool:
+        """Whether MOTMaster itself reports linked mode on (it drops it if the
+        secondary takes back control)."""
+        return bool(self.motmaster.IsLinked)
+
+    @contextmanager
+    def linked(
+        self
+    ) -> Iterator[None]:
+        """Hold the link for the duration of a ``with`` block, releasing it
+        even if a scan inside fails."""
+        self.set_linked(True)
+        try:
+            yield
+        finally:
+            self.set_linked(False)
+
+    def _go(
+        self,
+        dictionary: Any = None
+    ) -> None:
+        # MOTMaster turns linked mode off by itself when the secondary takes
+        # back control; a linked script must then not run on the primary alone.
+        if self._link_requested and not self.is_linked():
+            self._link_requested = False
+            raise RuntimeError(
+                "MOTMaster is no longer linked (the secondary has probably "
+                "taken back control); the linked script was not run. Call "
+                "set_linked(True) to claim the secondary again."
+            )
+        if dictionary is None:
+            self.motmaster.Go()
+        else:
+            self.motmaster.Go(dictionary)
         return None
 
     def get_params(self):
@@ -535,7 +629,7 @@ class Experiment():
                 )
                 if move_yag_spot:
                     self._move_picomotor_with_default_settings()
-                self.motmaster.Go()
+                self._go()
                 time.sleep(self.interval)
         except Exception as e:
             print(f"Error: {e} encountered")
@@ -557,7 +651,7 @@ class Experiment():
                 )
                 if move_yag_spot:
                     self._move_picomotor_with_default_settings()
-                self.motmaster.Go()
+                self._go()
                 time.sleep(self.interval)
         except Exception as e:
             print(f"Error: {e} encountered")
@@ -590,13 +684,13 @@ class Experiment():
                 if (motmaster_parameter and motmaster_values) is not None:
                     for k in range(len(motmaster_values)):
                         _dictionary[motmaster_parameter] = motmaster_values[k]
-                        self.motmaster.Go(_dictionary)
+                        self._go(_dictionary)
                         time.sleep(self.interval)
                         if callback is not None:
                             result = callback(step_index)
                             results.append(result)
                 else:
-                    self.motmaster.Go()
+                    self._go()
                     time.sleep(self.interval)
                     if callback is not None:
                         result = callback(step_index)
