@@ -189,7 +189,7 @@ class Experiment():
             )
         return lasers
 
-    def get_laser_set_points_wml(
+    def v0freq(
         self
     ) -> Dict[str, Dict[str, float]]:
         lasers = {}
@@ -493,6 +493,32 @@ class Experiment():
             print(f"Error: {e} encountered")
         return None
 
+    def get_params(self):
+        return dict(self.motmaster.GetParameters())
+
+    def get_params_csdict(self):
+        return self.motmaster.GetParameters()
+
+    def set_run_until_stopped(self, value: bool):
+        self.motmaster.SetRunUntilStopped(value)
+    
+    def set_iterations(self, iterations: int):
+        self.motmaster.SetIterations(iterations)
+
+    def set_save_toggle(self, save: bool):
+        self.motmaster.SaveToggle(save)
+
+    def set_trigger_mode(self, value: bool):
+        self.motmaster.SetTriggered(value)
+        
+    def save_pattern_info(self, save_folder, file_tag, task_nr):
+        """Save pattern information to files. calls saveToFiles from MMDataIOHelper"""
+        if self.script is None:
+            raise ValueError(
+                "MotMaster script not set. Please call set_motmaster_experiment first."
+            )
+        self.motmaster.ioHelper.saveToFiles(file_tag, save_folder, task_nr, self.script_path)
+
     def scan_microwave_amplitude(
         self,
         script: str,
@@ -518,7 +544,7 @@ class Experiment():
     def scan_microwave_frequency(
         self,
         script: str,
-        synthesizer: str = "Gigatronics Synthesizer 2",
+        synthesizer: str = "Gigatronics Synthesizer 1",
         values: List[float] = [],
         move_yag_spot: bool = False
     ) -> None:
