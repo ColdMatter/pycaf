@@ -221,7 +221,7 @@ class Experiment():
             )
         return lasers
 
-    def v0freq(
+    def get_laser_set_points_wml(
         self
     ) -> Dict[str, Dict[str, float]]:
         lasers = {}
